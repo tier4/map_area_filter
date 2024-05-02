@@ -50,7 +50,7 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
       "input/objects_cloud", rclcpp::SensorDataQoS(),
       std::bind(&MapAreaFilterComponent::objects_cloud_callback, this, _1));
     area_markers_pub_ =
-      this->create_publisher<visualization_msgs::msg::MarkerArray>("output/debug1", rclcpp::QoS(1));
+      this->create_publisher<visualization_msgs::msg::MarkerArray>("pointcloud_filter_area", rclcpp::QoS(1));
   }else if(filter_type == 2){
     objects_sub_ = this->create_subscription<PredictedObjects>(
       "input/objects", rclcpp::QoS(10),
@@ -58,9 +58,9 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     filtered_objects_pub_ =
       this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
     area_markers_pub_ =
-      this->create_publisher<visualization_msgs::msg::MarkerArray>("output/debug2", rclcpp::QoS(1));
+      this->create_publisher<visualization_msgs::msg::MarkerArray>("objects_filter_area", rclcpp::QoS(1));
   } else{
-      RCLCPP_INFO_STREAM(this->get_logger(), "\nfilter_type: " << filter_type 
+      RCLCPP_ERROR_STREAM(this->get_logger(), "\nfilter_type: " << filter_type 
         << " is not invalid.\nIn order to filter pointcloud: filter_type = 1\nIn order to filter objects: filter_type = 2");
   }
   
@@ -199,7 +199,6 @@ void MapAreaFilterComponent::row_to_rowpoints(const csv::CSVRow & row ,std::vect
 {
   size_t i = 0, j = -1;
   float current_x = 0.f;
-  RCLCPP_INFO_STREAM(this->get_logger(), "a");
   for (csv::CSVField & field : row) {//各列に対して
     areatype = AreaType::DELETE_OBJECT;
     if (i == 0) {  // first column contains type of area.
@@ -209,7 +208,6 @@ void MapAreaFilterComponent::row_to_rowpoints(const csv::CSVRow & row ,std::vect
       }
       i++;
       j++;
-      RCLCPP_INFO_STREAM(this->get_logger(), "a" << correct_elem);
       continue;
     }//1つ目の値を取り出す
     float point = field.get<float>(correct_elem);
@@ -314,7 +312,7 @@ void MapAreaFilterComponent::filter_points_by_area(
     area_check[area_i] = (distance <= area_distance_check_);
   }  // for polygons
 
-  const auto point_size = input->points.size();//subscribeされた点群のtopic?
+  const auto point_size = input->points.size();//subscribeされた点群のtopic
   std::vector<bool> within(point_size, true);
 #pragma omp parallel for
   for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
