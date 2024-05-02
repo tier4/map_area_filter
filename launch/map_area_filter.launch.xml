@@ -1,0 +1,33 @@
+<launch>
+
+  <arg name="input_topic_name" default="/perception/obstacle_segmentation/voxel_grid_outlier_filtered/pointcloud"/>
+  <arg name="output_topic_name" default="/pointcloud_filtered"/>
+  <arg name="pose_topic_name" default="/localization/pose_estimator/pose"/>
+  <arg name="objects_cloud_topic_name" default="/perception/obstacle_segmentation/pointcloud"/>
+  <arg name="objects_topic_name" default="/perception/object_recognition/objects"/>
+  <arg name="input_frame" default="base_link"/>
+  <arg name="output_frame" default="base_link"/>
+  <arg name="map_area_csv" default="/home/map4/data/map_area_filter/normal.csv"/>
+
+  <node pkg="map_area_filter" exec="map_area_filter" name="ObjectFilter" output="screen">
+    <remap from="input/pose_topic" to="/localization/pose_estimator/pose"/>
+    <remap from="input/objects" to="/perception/object_recognition/objects"/>
+    <remap from="output/objects" to="/perception/object_recognition/objects_tmp"/>
+
+    <param name="map_area_csv" value="/filtering_area/Objectfilter_area.csv"/>
+    <param name="area_distance_check" value="200"/>
+    <param name="filter_type" value="2"/>
+  </node>
+
+  <node pkg="map_area_filter" exec="map_area_filter" name="PointcloudFilter" output="screen">
+    <remap from="input" to="/perception/obstacle_segmentation/pointcloud"/>
+    <remap from="output" to="/pointcloud_filtered"/>
+    <remap from="input/pose_topic" to="/localization/pose_estimator/pose"/>
+    <remap from="output/objects_cloud" to="/pointcloud_filtered"/>
+
+    <param name="map_area_csv" value="/filtering_area/Pointcloudfilter_area.csv"/>
+    <param name="area_distance_check" value="200"/>
+    <param name="filter_type" value="1"/>
+  </node>
+
+</launch>
