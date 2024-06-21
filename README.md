@@ -36,3 +36,6 @@ object_type,x1,y1,x2,y2,...,xn,yn
 ### Setting filter type
 Please look at `map_area_filter.lauch.xml`. By default, both Pointcloud filter and Object filter nodes are activated. 
 If you want to use only one filter, comment out the description of the filter node you do not want to use.
+
+## memo
+Topics of viewing filtering areas are `pointcloud_filter_area`, `objects_filter_area`.
