@@ -346,12 +346,17 @@ bool MapAreaFilterComponent::filter_objects_by_area(DetectedObjects & out_object
 
   const DetectedObjects in_objects = *objects_ptr_.get();//input_objectのデータ
   out_objects.header = in_objects.header;
+  auto map2objects = transform_listener_.getTransform(
+    "map",                        // src
+    in_objects.header.frame_id,  // target
+    in_objects.header.stamp, rclcpp::Duration::from_seconds(0.1));
   for (const auto & object : in_objects.objects) {//各オブジェクトに対して
-    const auto pos = object.kinematics.pose_with_covariance.pose.position;
+    const auto pos = map2objects->transform.translation;
     const auto object_label = object.classification[0].label;
     bool within = false;
     for (std::size_t area_i = 0, size = area_polygons_.size(); area_i < size; ++area_i) {//各領域に対して
       if ((boost::geometry::within(PointXY(pos.x, pos.y), area_polygons_[area_i]))) {//各領域にオブジェクトの重心が入っているなら
+        RCLCPP_INFO_STREAM(this->get_logger(), "b" << 1);
         if(object_label == area_labels[area_i] || area_labels[area_i] == (uint8_t)8){ within = true; }
       }
     }
