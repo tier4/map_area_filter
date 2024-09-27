@@ -52,11 +52,11 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     area_markers_pub_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("pointcloud_filter_area", rclcpp::QoS(1));
   }else if(filter_type == 2){
-    objects_sub_ = this->create_subscription<PredictedObjects>(
+    objects_sub_ = this->create_subscription<DetectedObjects>(
       "input/objects", rclcpp::QoS(10),
       std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
     filtered_objects_pub_ =
-      this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
+      this->create_publisher<DetectedObjects>("output/objects", rclcpp::QoS(10));
     area_markers_pub_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("objects_filter_area", rclcpp::QoS(1));
   } else{
@@ -171,12 +171,12 @@ void MapAreaFilterComponent::objects_cloud_callback(
   objects_cloud_ptr_ = msg;
 }
 
-void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstSharedPtr & msg)
+void MapAreaFilterComponent::objects_callback(const DetectedObjects::ConstSharedPtr & msg)
 {
   std::scoped_lock lock(mutex_);
   objects_ptr_ = msg;
 
-  PredictedObjects out_objects;
+  DetectedObjects out_objects;
   if(csv_invalid){
     filtered_objects_pub_->publish(*objects_ptr_.get());
   }else if (filter_objects_by_area(out_objects)) {
@@ -338,16 +338,16 @@ void MapAreaFilterComponent::filter_points_by_area(
 }
 
 
-bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objects)//各オブジェクトがオブジェクト削除領域に存在するなら消すという関数
+bool MapAreaFilterComponent::filter_objects_by_area(DetectedObjects & out_objects)//各オブジェクトがオブジェクト削除領域に存在するなら消すという関数
 {
   if (!objects_ptr_.has_value() || objects_ptr_.get() == nullptr) {
     return false;
   }//objects_ptr_はinput_objectsのpointer
 
-  const PredictedObjects in_objects = *objects_ptr_.get();//input_objectのデータ
+  const DetectedObjects in_objects = *objects_ptr_.get();//input_objectのデータ
   out_objects.header = in_objects.header;
   for (const auto & object : in_objects.objects) {//各オブジェクトに対して
-    const auto pos = object.kinematics.initial_pose_with_covariance.pose.position;
+    const auto pos = object.kinematics.pose_with_covariance.pose.position;
     const auto object_label = object.classification[0].label;
     bool within = false;
     for (std::size_t area_i = 0, size = area_polygons_.size(); area_i < size; ++area_i) {//各領域に対して
