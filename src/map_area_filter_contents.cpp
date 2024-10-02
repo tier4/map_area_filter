@@ -363,12 +363,8 @@ bool MapAreaFilterComponent::filter_objects_by_area(DetectedObjects & out_object
     double map2ob_x = ego_pose.x + ego2ob.x*std::cos(yaw) - ego2ob.y*std::sin(yaw);
     double map2ob_y = ego_pose.y + ego2ob.x*std::sin(yaw) + ego2ob.y*std::cos(yaw);
     
-    RCLCPP_INFO_STREAM(this->get_logger(), "map2objects_x" << map2ob_x << "map2objects_y" << map2ob_y);
-    RCLCPP_INFO_STREAM(this->get_logger(), "map2baselink_x" << ego_pose.x << "map2baselink_y" << ego_pose.y);
-    
     for (std::size_t area_i = 0, size = area_polygons_.size(); area_i < size; ++area_i) {//各領域に対して
       if ((boost::geometry::within(PointXY(map2ob_x, map2ob_y), area_polygons_[area_i]))) {//各領域にオブジェクトの重心が入っているなら
-        RCLCPP_INFO_STREAM(this->get_logger(), "b" << 1);
         if(object_label == area_labels[area_i] || area_labels[area_i] == (uint8_t)8){ within = true; }
       }
     }
