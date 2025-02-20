@@ -21,8 +21,11 @@
 #include <pcl/common/impl/common.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
+#include <tier4_autoware_utils/ros/transform_listener.hpp>
+#include <tf2/utils.h>
 
-#include <autoware_auto_perception_msgs/msg/predicted_objects.hpp>
+
+#include <autoware_auto_perception_msgs/msg/detected_objects.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -48,7 +51,7 @@ enum class AreaType {
   DELETE_OBJECT,  // Delete detected object bbox
 };
 
-using autoware_auto_perception_msgs::msg::PredictedObjects;
+using autoware_auto_perception_msgs::msg::DetectedObjects;
 
 class MapAreaFilterComponent : public map_area_filter::Filter
 {
@@ -65,15 +68,16 @@ protected:
 
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+  tier4_autoware_utils::TransformListener transform_listener_{this};
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult paramCallback(const std::vector<rclcpp::Parameter> & p);
 
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr area_markers_pub_;
-  rclcpp::Publisher<PredictedObjects>::SharedPtr filtered_objects_pub_;
+  rclcpp::Publisher<DetectedObjects>::SharedPtr filtered_objects_pub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr objects_cloud_sub_;
-  rclcpp::Subscription<PredictedObjects>::SharedPtr objects_sub_;
+  rclcpp::Subscription<DetectedObjects>::SharedPtr objects_sub_;
 
 //private:
   std::shared_ptr<tf2_ros::Buffer> tf2_;
@@ -94,7 +98,7 @@ protected:
 
   geometry_msgs::msg::PoseStamped current_pose_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr objects_cloud_ptr_;
-  boost::optional<PredictedObjects::ConstSharedPtr> objects_ptr_;
+  boost::optional<DetectedObjects::ConstSharedPtr> objects_ptr_;
 
   rclcpp::TimerBase::SharedPtr timer_;
 
@@ -114,12 +118,12 @@ protected:
   void filter_points_by_area(
     const pcl::PointCloud<pcl::PointXYZ>::Ptr & input,
     pcl::PointCloud<pcl::PointXYZ>::Ptr output);
-  bool filter_objects_by_area(PredictedObjects & out_objects);
+  bool filter_objects_by_area(DetectedObjects & out_objects);
 
   void timer_callback();
   void pose_callback(const geometry_msgs::msg::PoseStamped::ConstSharedPtr & pose_msg);
   void objects_cloud_callback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud_msg);
-  void objects_callback(const PredictedObjects::ConstSharedPtr & cloud_msg);
+  void objects_callback(const DetectedObjects::ConstSharedPtr & cloud_msg);
 
   void color_func(double dis,std_msgs::msg::ColorRGBA & color);
   void create_area_marker_msg();
