@@ -5,7 +5,7 @@
     <!-- 1:pointcloud 2:objects -->
     <arg name="filter_type" default="2"/>
     <arg name="area_distance_check" default="200"/>
-    <arg name="map_area_csv" default="$(find-pkg-share map_area_filter)/config/area_map_filter.csv"/>
+    <arg name="map_area_filter_path" default="$(find-pkg-share map_area_filter)/config/area_map_filter.csv"/>
 
     <!-- Node -->
     <node pkg="map_area_filter" exec="map_area_filter" name="map_area_objects_filter" output="screen">
@@ -15,6 +15,6 @@
       <param name="area_distance_check" value="$(var area_distance_check)"/>
       <!-- 1:pointcloud 2:objects -->
       <param name="filter_type" value="$(var filter_type)"/>
-      <param name="map_area_csv" value="$(var map_area_csv)"/>
+      <param name="map_area_csv" value="$(var map_area_filter_path)"/>
     </node>
 </launch>
