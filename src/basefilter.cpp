@@ -60,6 +60,36 @@
 #include <utility>
 #include <vector>
 
+#define debug(var)             \
+  do {                         \
+    std::cerr << #var << ": "; \
+    view(var);                 \
+  } while (0)
+template <typename T>
+void view(T e)
+{
+  std::cerr << e << std::endl;
+}
+template <typename T>
+void view(const std::vector<T> & v)
+{
+  for (const auto & e : v) {
+    std::cerr << e << " ";
+  }
+  std::cerr << std::endl;
+}
+template <typename T>
+void view(const std::vector<std::vector<T> > & vv)
+{
+  for (const auto & v : vv) {
+    view(v);
+  }
+}
+#define line()                                              \
+  {                                                         \
+    std::cerr << __func__ << ", " << __LINE__ << std::endl; \
+  }
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 map_area_filter::Filter::Filter(
   const std::string & filter_name, const rclcpp::NodeOptions & options)
@@ -89,7 +119,7 @@ map_area_filter::Filter::Filter(
   // Set publisher
   {
     pub_output_ = this->create_publisher<PointCloud2>(
-      "output", rclcpp::SensorDataQoS().keep_last(max_queue_size_));
+      "output/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_));
   }
 
   subscribe();
@@ -138,7 +168,7 @@ void map_area_filter::Filter::subscribe()
     std::function<void(const PointCloud2ConstPtr msg)> cb = std::bind(
       &Filter::input_indices_callback, this, std::placeholders::_1, PointIndicesConstPtr());
     sub_input_ = create_subscription<PointCloud2>(
-      "input", rclcpp::SensorDataQoS().keep_last(max_queue_size_), cb);
+      "input/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_), cb);
   }
 }
 

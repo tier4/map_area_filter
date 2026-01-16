@@ -22,7 +22,7 @@ namespace map_area_filter
 using std::placeholders::_1;
 using namespace std::chrono_literals;
 
-//constructor
+// constructor
 MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & options)
 : Filter("MapAreaFilter", options)
 {
@@ -40,30 +40,35 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
   // 1: pointcloud_filter 2: object_filter
   filter_type = static_cast<double>(this->declare_parameter("filter_type", 1));
   area_labels.reserve(10000);
-  
+
   pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
     "input/pose_topic", rclcpp::QoS(1),
     std::bind(&MapAreaFilterComponent::pose_callback, this, _1));
 
-  if(filter_type == 1){
+  if (filter_type == 1 || filter_type == 3) {
     objects_cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-      "input/objects_cloud", rclcpp::SensorDataQoS(),
+      "input/additional_objects_cloud", rclcpp::SensorDataQoS(),
       std::bind(&MapAreaFilterComponent::objects_cloud_callback, this, _1));
-    area_markers_pub_ =
-      this->create_publisher<visualization_msgs::msg::MarkerArray>("pointcloud_filter_area", rclcpp::QoS(1));
-  }else if(filter_type == 2){
+    area_markers_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+      "pointcloud_filter_area", rclcpp::QoS(1));
+  }
+  if (filter_type == 2 || filter_type == 3) {
     objects_sub_ = this->create_subscription<PredictedObjects>(
       "input/objects", rclcpp::QoS(10),
       std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
     filtered_objects_pub_ =
       this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
-    area_markers_pub_ =
-      this->create_publisher<visualization_msgs::msg::MarkerArray>("objects_filter_area", rclcpp::QoS(1));
-  } else{
-      RCLCPP_ERROR_STREAM(this->get_logger(), "\nfilter_type: " << filter_type 
-        << " is not invalid.\nIn order to filter pointcloud: filter_type = 1\nIn order to filter objects: filter_type = 2");
+    area_markers_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+      "objects_filter_area", rclcpp::QoS(1));
   }
-  
+  if (filter_type != 1 && filter_type != 2 && filter_type != 3) {
+    RCLCPP_ERROR_STREAM(
+      this->get_logger(),
+      "\nfilter_type: " << filter_type
+                        << " is not invalid.\nIn order to filter pointcloud: filter_type = 1\nIn "
+                           "order to filter objects: filter_type = 2");
+  }
+
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&MapAreaFilterComponent::paramCallback, this, _1));
 
@@ -73,7 +78,7 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
       this->get_logger(), "Invalid CSV File provided: '" << map_area_csv << "'. Not filtering");
     do_filter_ = false;
     csv_invalid = false;
-  }else{
+  } else {
     RCLCPP_INFO_STREAM(this->get_logger(), "Areas: " << area_polygons_.size());
 
     rclcpp::Clock::SharedPtr clock = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
@@ -86,22 +91,33 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
   }
 }
 
-void MapAreaFilterComponent::subscribe() { Filter::subscribe(); }
-
-void MapAreaFilterComponent::unsubscribe() { Filter::unsubscribe(); }
-
-void MapAreaFilterComponent::color_func(double dis,std_msgs::msg::ColorRGBA & color)
+void MapAreaFilterComponent::subscribe()
 {
-  if(filter_type == 2) {
-  color.r = 0. + dis;
-  color.g = 0. + dis;
-  color.b = 1.;
-  color.a = 0.5;
-  } else if(filter_type == 1) {
-  color.r = 1.;
-  color.g = 0. + dis;
-  color.b = 0. + dis;
-  color.a = 0.5;
+  Filter::subscribe();
+}
+
+void MapAreaFilterComponent::unsubscribe()
+{
+  Filter::unsubscribe();
+}
+
+void MapAreaFilterComponent::color_func(double dis, std_msgs::msg::ColorRGBA & color)
+{
+  if (filter_type == 2) {
+    color.r = 0. + dis;
+    color.g = 0. + dis;
+    color.b = 1.;
+    color.a = 0.5;
+  } else if (filter_type == 1) {
+    color.r = 1.;
+    color.g = 0. + dis;
+    color.b = 0. + dis;
+    color.a = 0.5;
+  } else if (filter_type == 3) {
+    color.r = 1.;
+    color.g = 0. + dis;
+    color.b = 1.;
+    color.a = 0.5;
   }
 }
 
@@ -120,7 +136,7 @@ void MapAreaFilterComponent::create_area_marker_msg()
     area.action = visualization_msgs::msg::Marker::MODIFY;
 
     std_msgs::msg::ColorRGBA color;
-    color_func(dist(gen),color);
+    color_func(dist(gen), color);
 
     area.color = color;
 
@@ -149,13 +165,16 @@ void MapAreaFilterComponent::create_area_marker_msg()
     text.pose.position.y = static_cast<double>(area.points[0].y);
     text.pose.position.z = 0.0;
     text.scale.z = marker_font_scale_;
-    text.text = std::to_string(original_csv_order_[i]+1);
+    text.text = std::to_string(original_csv_order_[i] + 1);
     text.color = color;
     area_markers_msg_.markers.emplace_back(text);
   }
 }
 
-void MapAreaFilterComponent::timer_callback() { area_markers_pub_->publish(area_markers_msg_); }
+void MapAreaFilterComponent::timer_callback()
+{
+  area_markers_pub_->publish(area_markers_msg_);
+}
 
 void MapAreaFilterComponent::pose_callback(
   const geometry_msgs::msg::PoseStamped::ConstSharedPtr & msg)
@@ -177,42 +196,47 @@ void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstShare
   objects_ptr_ = msg;
 
   PredictedObjects out_objects;
-  if(csv_invalid){
+  if (csv_invalid) {
     filtered_objects_pub_->publish(*objects_ptr_.get());
-  }else if (filter_objects_by_area(out_objects)) {
+  } else if (filter_objects_by_area(out_objects)) {
     filtered_objects_pub_->publish(out_objects);
   }
 }
 
-void MapAreaFilterComponent::csv_row_func(const csv::CSVRow & row,std::deque<csv::CSVRow> & rows,std::size_t row_i)
+void MapAreaFilterComponent::csv_row_func(
+  const csv::CSVRow & row, std::deque<csv::CSVRow> & rows, std::size_t row_i)
 {
-  if(filter_type == 2) {
-    rows.emplace_back(row);
-    original_csv_order_.emplace_back(row_i);
-  } else if(filter_type == 1) {
-    rows.emplace_front(row);
-    original_csv_order_.emplace_front(row_i);
-  }
+  // if(filter_type == 2) {
+  rows.emplace_back(row);
+  original_csv_order_.emplace_back(row_i);
+  // } else if(filter_type == 1) {
+  //   rows.emplace_front(row);
+  //   original_csv_order_.emplace_front(row_i);
+  // }
 }
 
-void MapAreaFilterComponent::row_to_rowpoints(const csv::CSVRow & row ,std::vector<PointXY> & row_points,AreaType & areatype, bool & correct_elem)
+void MapAreaFilterComponent::row_to_rowpoints(
+  const csv::CSVRow & row, std::vector<PointXY> & row_points, AreaType & areatype,
+  bool & correct_elem)
 {
   size_t i = 0, j = -1;
   float current_x = 0.f;
-  for (csv::CSVField & field : row) {//各列に対して
+  for (csv::CSVField & field : row) {  // 各列に対して
     areatype = AreaType::DELETE_OBJECT;
     if (i == 0) {  // first column contains type of area.
-      if(filter_type == 2) {
+      if (filter_type == 2 || filter_type == 3) {
         uint8_t label = (uint8_t)field.get<int>(correct_elem);
-        if(correct_elem){area_labels.emplace_back(label);}
+        if (correct_elem) {
+          area_labels.emplace_back(label);
+        }
       }
       i++;
       j++;
       continue;
-    }//1つ目の値を取り出す
+    }  // 1つ目の値を取り出す
     float point = field.get<float>(correct_elem);
-    if(correct_elem){
-      if (j % 2) {//xをもとに(x,y)を取り出す 
+    if (correct_elem) {
+      if (j % 2) {  // xをもとに(x,y)を取り出す
         row_points.emplace_back(PointXY(current_x, point));
       } else {
         current_x = point;
@@ -227,23 +251,25 @@ bool MapAreaFilterComponent::load_areas_from_csv(const std::string & file_name)
   csv::CSVFormat format;
   format.no_header();
   format.variable_columns(csv::VariableColumnPolicy::KEEP);
-  csv::CSVReader reader(file_name,csv_loaded_,format);
-  if(!csv_loaded_){return false;}
+  csv::CSVReader reader(file_name, csv_loaded_, format);
+  if (!csv_loaded_) {
+    return false;
+  }
   std::deque<csv::CSVRow> rows;
   std::size_t row_i = 0;
   for (const csv::CSVRow & row : reader) {
-    csv_row_func(row,rows,row_i);//列の順番を並び替えただけ
+    csv_row_func(row, rows, row_i);  // 列の順番を並び替えただけ
 
     row_i++;
   }
 
-  for (const csv::CSVRow & row : rows) {//各行に対して
+  for (const csv::CSVRow & row : rows) {  // 各行に対して
     std::vector<PointXY> row_points;
     Polygon2D current_polygon;
     AreaType areatype;
-    bool correct_elem = true;//csv fileの各要素が正しい数値かどうか(正しくないならfilterしない)
-    row_to_rowpoints(row,row_points,areatype,correct_elem);//一列の情報をrow_pointsに格納
-    //current_polygonのログ、エラー処理
+    bool correct_elem = true;  // csv fileの各要素が正しい数値かどうか(正しくないならfilterしない)
+    row_to_rowpoints(row, row_points, areatype, correct_elem);  // 一列の情報をrow_pointsに格納
+    // current_polygonのログ、エラー処理
     if (correct_elem && !row_points.empty()) {
       boost::geometry::assign_points(current_polygon, row_points);
       if (!boost::geometry::is_valid(current_polygon)) {
@@ -252,13 +278,16 @@ bool MapAreaFilterComponent::load_areas_from_csv(const std::string & file_name)
       RCLCPP_INFO_STREAM(  // Verbose output
         this->get_logger(),
         "Polygon in row: " << boost::geometry::dsv(current_polygon) << " has an area of "
-                          << boost::geometry::area(current_polygon) << " and its type is "
-                          << static_cast<int>(areatype));
+                           << boost::geometry::area(current_polygon) << " and its type is "
+                           << static_cast<int>(areatype));
       if (boost::geometry::area(current_polygon) > 0) {
         PointXY centroid(0.f, 0.f);
         boost::geometry::centroid(current_polygon, centroid);
-        centroid_polygons_.emplace_back(centroid);//多角形の重心の集合
-        area_polygons_.emplace_back(current_polygon);//多角形の集合(areatypeが適切でないものは無視)
+        std::cerr << "centroid_x: " << centroid.x() << ", centroid_y: " << centroid.y()
+                  << std::endl;
+        centroid_polygons_.emplace_back(centroid);  // 多角形の重心の集合
+        area_polygons_.emplace_back(
+          current_polygon);  // 多角形の集合(areatypeが適切でないものは無視)
       } else {
         RCLCPP_WARN_STREAM(
           this->get_logger(), "Ignoring invalid polygon:" << boost::geometry::dsv(current_polygon));
@@ -269,12 +298,12 @@ bool MapAreaFilterComponent::load_areas_from_csv(const std::string & file_name)
   }
 
   csv_loaded_ = true;
-  create_area_marker_msg();//csvの処理がされた多角形に色を付けて図示
+  create_area_marker_msg();  // csvの処理がされた多角形に色を付けて図示
 
   return !area_polygons_.empty();
 }
 
-bool MapAreaFilterComponent::transform_pointcloud(//output flame 
+bool MapAreaFilterComponent::transform_pointcloud(  // output flame
   const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
   const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output)
 {
@@ -294,7 +323,6 @@ bool MapAreaFilterComponent::transform_pointcloud(//output flame
   return true;
 }
 
-
 void MapAreaFilterComponent::filter_points_by_area(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output)
 {
@@ -303,30 +331,36 @@ void MapAreaFilterComponent::filter_points_by_area(
   std::vector<bool> area_check(polygon_size, false);
   for (std::size_t area_i = 0; area_i < polygon_size; area_i++) {
     const auto & centroid = centroid_polygons_[area_i];
-    double distance = sqrt(
-      (centroid.x() - current_pose_.pose.position.x) *
-        (centroid.x() - current_pose_.pose.position.x) +
-      (centroid.y() - current_pose_.pose.position.y) *
-        (centroid.y() - current_pose_.pose.position.y));
+
+    // 1. マップ座標系における自車位置を取得
+    //    (Map -> Baselink の変換の translation 成分 = Map上の自車位置)
+    auto map2baselink = transform_listener_.getLatestTransform("map", "base_link");
+
+    if (!map2baselink) {
+      RCLCPP_ERROR_STREAM(this->get_logger(), "Failed to get map to baselink transform");
+      continue;
+    }
+    const auto & ego_pos_map = map2baselink->transform.translation;
+    double distance = std::hypot(centroid.x() - ego_pos_map.x, centroid.y() - ego_pos_map.y);
 
     area_check[area_i] = (distance <= area_distance_check_);
   }  // for polygons
 
-  const auto point_size = input->points.size();//subscribeされた点群のtopic
+  const auto point_size = input->points.size();  // subscribeされた点群のtopic
   std::vector<bool> within(point_size, true);
-#pragma omp parallel for
+#pragma omp parallel for num_threads(4)
   for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
+    // RCLCPP_INFO(this->get_logger(), "Running with %d OpenMP threads", omp_get_num_threads());
     const auto point = input->points[point_i];
     bool _within = false;
     for (std::size_t area_i = 0; area_i < polygon_size; area_i++) {
       if (!area_check[area_i]) continue;
 
       if (boost::geometry::within(PointXY(point.x, point.y), area_polygons_[area_i])) {
-        if(filter_type == 1){ _within = true;}
+        _within = true;
       }
     }
-
-    within[point_i] = _within;//delete all領域に入っているか
+    within[point_i] = _within;  // delete all領域に入っているか
   }
 
   for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
@@ -337,20 +371,21 @@ void MapAreaFilterComponent::filter_points_by_area(
   }
 }
 
-
-bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objects)//各オブジェクトがオブジェクト削除領域に存在するなら消すという関数
+bool MapAreaFilterComponent::filter_objects_by_area(
+  PredictedObjects &
+    out_objects)  // 各オブジェクトがオブジェクト削除領域に存在するなら消すという関数
 {
   if (!objects_ptr_.has_value() || objects_ptr_.get() == nullptr) {
     return false;
-  }//objects_ptr_はinput_objectsのpointer
+  }  // objects_ptr_はinput_objectsのpointer
 
-  const PredictedObjects in_objects = *objects_ptr_.get();//input_objectのデータ
+  const PredictedObjects in_objects = *objects_ptr_.get();  // input_objectのデータ
   out_objects.header = in_objects.header;
   auto map2baselink = transform_listener_.getTransform(
-    "map",                                          // src
-    in_objects.header.frame_id,                     // target
+    "map",                       // src
+    in_objects.header.frame_id,  // target
     in_objects.header.stamp, rclcpp::Duration::from_seconds(0.1));
-  for (const auto & object : in_objects.objects) {//各オブジェクトに対して
+  for (const auto & object : in_objects.objects) {  // 各オブジェクトに対して
     const auto ego_pose = map2baselink->transform.translation;
     const auto ego2ob = object.kinematics.initial_pose_with_covariance.pose.position;
     const auto object_label = object.classification[0].label;
@@ -358,18 +393,23 @@ bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objec
 
     auto quat_geo = map2baselink->transform.rotation;
     tf2::Quaternion quat(quat_geo.x, quat_geo.y, quat_geo.z, quat_geo.w);
-    double r,p,yaw;//出力値[rad]
-    tf2::Matrix3x3(quat).getRPY(r, p, yaw);//クォータニオン→オイラー角
-    double map2ob_x = ego_pose.x + ego2ob.x*std::cos(yaw) - ego2ob.y*std::sin(yaw);
-    double map2ob_y = ego_pose.y + ego2ob.x*std::sin(yaw) + ego2ob.y*std::cos(yaw);
-    
-    for (std::size_t area_i = 0, size = area_polygons_.size(); area_i < size; ++area_i) {//各領域に対して
-      if ((boost::geometry::within(PointXY(map2ob_x, map2ob_y), area_polygons_[area_i]))) {//各領域にオブジェクトの重心が入っているなら
-        if(object_label == area_labels[area_i] || area_labels[area_i] == (uint8_t)8){ within = true; }
+    double r, p, yaw;                        // 出力値[rad]
+    tf2::Matrix3x3(quat).getRPY(r, p, yaw);  // クォータニオン→オイラー角
+    double map2ob_x = ego_pose.x + ego2ob.x * std::cos(yaw) - ego2ob.y * std::sin(yaw);
+    double map2ob_y = ego_pose.y + ego2ob.x * std::sin(yaw) + ego2ob.y * std::cos(yaw);
+
+    for (std::size_t area_i = 0, size = area_polygons_.size(); area_i < size;
+         ++area_i) {  // 各領域に対して
+      if ((boost::geometry::within(
+            PointXY(map2ob_x, map2ob_y),
+            area_polygons_[area_i]))) {  // 各領域にオブジェクトの重心が入っているなら
+        if (object_label == area_labels[area_i] || area_labels[area_i] == (uint8_t)8) {
+          within = true;
+        }
       }
     }
-    if (!within) {//各オブジェクトが領域に属しているか(within==trueか)
-      out_objects.objects.emplace_back(object);//属していないなら消去しない(outputする)
+    if (!within) {  // 各オブジェクトが領域に属しているか(within==trueか)
+      out_objects.objects.emplace_back(object);  // 属していないなら消去しない(outputする)
     }
   }
 
