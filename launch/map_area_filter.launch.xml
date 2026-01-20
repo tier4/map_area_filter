@@ -1,24 +1,20 @@
 <launch>
+    <arg name="input/pose_topic" default="/localization/pose_estimator/pose"/>
+    <arg name="input/objects" default="/perception/object_recognition/detection/objects"/>
+    <arg name="output/objects" default="/perception/object_recognition/objects_tmp"/>
+    <!-- 1:pointcloud 2:objects -->
+    <arg name="filter_type" default="2"/>
+    <arg name="area_distance_check" default="200"/>
+    <arg name="map_area_filter_path" default="$(find-pkg-share map_area_filter)/config/area_map_filter.csv"/>
 
-  <node pkg="map_area_filter" exec="map_area_filter" name="ObjectFilter" output="screen">
-    <remap from="input/pose_topic" to="/localization/pose_estimator/pose"/>
-    <remap from="input/objects" to="/perception/object_recognition/detection/objects"/>
-    <remap from="output/objects" to="/perception/object_recognition/objects_tmp"/>
-
-    <param name="map_area_csv" value="/objects_filter_area.csv"/>
-    <param name="area_distance_check" value="200"/>
-    <param name="filter_type" value="2"/>
-  </node>
-
-  <node pkg="map_area_filter" exec="map_area_filter" name="PointcloudFilter" output="screen">
-    <remap from="input" to="/perception/obstacle_segmentation/pointcloud"/>
-    <remap from="output" to="/pointcloud_filtered"/>
-    <remap from="input/pose_topic" to="/localization/pose_estimator/pose"/>
-    <remap from="output/objects_cloud" to="/pointcloud_filtered"/>
-
-    <param name="map_area_csv" value="point_cloud_filter_area.csv"/>
-    <param name="area_distance_check" value="200"/>
-    <param name="filter_type" value="1"/>
-  </node>
-
+    <!-- Node -->
+    <node pkg="map_area_filter" exec="map_area_filter" name="map_area_objects_filter" output="screen">
+      <remap from="input/pose_topic" to="$(var input/pose_topic)"/>
+      <remap from="input/objects" to="$(var input/objects)"/>
+      <remap from="output/objects" to="$(var output/objects)"/>
+      <param name="area_distance_check" value="$(var area_distance_check)"/>
+      <!-- 1:pointcloud 2:objects -->
+      <param name="filter_type" value="$(var filter_type)"/>
+      <param name="map_area_csv" value="$(var map_area_filter_path)"/>
+    </node>
 </launch>
