@@ -16,6 +16,8 @@
 
 #include "map_area_filter_contents.hpp"
 
+#include <autoware_utils_geometry/boost_polygon_utils.hpp>
+
 namespace map_area_filter
 {
 
@@ -358,9 +360,8 @@ void MapAreaFilterComponent::filter_points_by_area(
   }
 }
 
-bool MapAreaFilterComponent::filter_objects_by_area(
-  PredictedObjects &
-    out_objects)  // 各オブジェクトがオブジェクト削除領域に存在するなら消すという関数
+// 各オブジェクトがオブジェクト削除領域に存在するなら消すという関数
+bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objects)
 {
   if (!objects_ptr_.has_value() || objects_ptr_.get() == nullptr) {
     return false;
@@ -368,31 +369,22 @@ bool MapAreaFilterComponent::filter_objects_by_area(
 
   const PredictedObjects in_objects = *objects_ptr_.get();  // input_objectのデータ
   out_objects.header = in_objects.header;
-  auto map2baselink = transform_listener_.getTransform(
-    "map",                       // src
-    in_objects.header.frame_id,  // target
-    in_objects.header.stamp, rclcpp::Duration::from_seconds(0.1));
+  assert(in_objects.header.frame_id == "map");
+
   for (const auto & object : in_objects.objects) {  // 各オブジェクトに対して
-    const auto ego_pose = map2baselink->transform.translation;
-    const auto ego2ob = object.kinematics.initial_pose_with_covariance.pose.position;
     const auto object_label = object.classification[0].label;
     bool within = false;
 
-    auto quat_geo = map2baselink->transform.rotation;
-    tf2::Quaternion quat(quat_geo.x, quat_geo.y, quat_geo.z, quat_geo.w);
-    double r, p, yaw;                        // 出力値[rad]
-    tf2::Matrix3x3(quat).getRPY(r, p, yaw);  // クォータニオン→オイラー角
-    double map2ob_x = ego_pose.x + ego2ob.x * std::cos(yaw) - ego2ob.y * std::sin(yaw);
-    double map2ob_y = ego_pose.y + ego2ob.x * std::sin(yaw) + ego2ob.y * std::cos(yaw);
+    const auto obj_poly = autoware_utils_geometry::to_polygon2d(
+      object.kinematics.initial_pose_with_covariance.pose, object.shape);
 
-    for (std::size_t area_i = 0, size = area_polygons_.size(); area_i < size;
-         ++area_i) {  // 各領域に対して
-      if ((boost::geometry::within(
-            PointXY(map2ob_x, map2ob_y),
-            area_polygons_[area_i]))) {  // 各領域にオブジェクトの重心が入っているなら
-        if (object_label == area_labels[area_i] || area_labels[area_i] == (uint8_t)8) {
-          within = true;
-        }
+    for (std::size_t area_i = 0; area_i < area_polygons_.size(); ++area_i) {
+      if (object_label != area_labels[area_i] && area_labels[area_i] != (uint8_t)8) {
+        continue;
+      }
+      if (boost::geometry::within(obj_poly, area_polygons_[area_i])) {
+        within = true;
+        break;
       }
     }
     if (!within) {  // 各オブジェクトが領域に属しているか(within==trueか)
