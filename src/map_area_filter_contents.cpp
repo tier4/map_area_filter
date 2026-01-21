@@ -52,11 +52,11 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     area_markers_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "pointcloud_filter_area", rclcpp::QoS(1));
   } else if (filter_type == 2) {
-    objects_sub_ = this->create_subscription<DetectedObjects>(
+    objects_sub_ = this->create_subscription<PredictedObjects>(
       "input/objects", rclcpp::QoS(10),
       std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
     filtered_objects_pub_ =
-      this->create_publisher<DetectedObjects>("output/objects", rclcpp::QoS(10));
+      this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
     area_markers_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "objects_filter_area", rclcpp::QoS(1));
   } else {
@@ -183,12 +183,12 @@ void MapAreaFilterComponent::objects_cloud_callback(
   objects_cloud_ptr_ = msg;
 }
 
-void MapAreaFilterComponent::objects_callback(const DetectedObjects::ConstSharedPtr & msg)
+void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstSharedPtr & msg)
 {
   std::scoped_lock lock(mutex_);
   objects_ptr_ = msg;
 
-  DetectedObjects out_objects;
+  PredictedObjects out_objects;
   if (csv_invalid) {
     filtered_objects_pub_->publish(*objects_ptr_.get());
   } else if (filter_objects_by_area(out_objects)) {
@@ -359,14 +359,14 @@ void MapAreaFilterComponent::filter_points_by_area(
 }
 
 bool MapAreaFilterComponent::filter_objects_by_area(
-  DetectedObjects &
+  PredictedObjects &
     out_objects)  // 各オブジェクトがオブジェクト削除領域に存在するなら消すという関数
 {
   if (!objects_ptr_.has_value() || objects_ptr_.get() == nullptr) {
     return false;
   }  // objects_ptr_はinput_objectsのpointer
 
-  const DetectedObjects in_objects = *objects_ptr_.get();  // input_objectのデータ
+  const PredictedObjects in_objects = *objects_ptr_.get();  // input_objectのデータ
   out_objects.header = in_objects.header;
   auto map2baselink = transform_listener_.getTransform(
     "map",                       // src
@@ -374,7 +374,7 @@ bool MapAreaFilterComponent::filter_objects_by_area(
     in_objects.header.stamp, rclcpp::Duration::from_seconds(0.1));
   for (const auto & object : in_objects.objects) {  // 各オブジェクトに対して
     const auto ego_pose = map2baselink->transform.translation;
-    const auto ego2ob = object.kinematics.pose_with_covariance.pose.position;
+    const auto ego2ob = object.kinematics.initial_pose_with_covariance.pose.position;
     const auto object_label = object.classification[0].label;
     bool within = false;
 
