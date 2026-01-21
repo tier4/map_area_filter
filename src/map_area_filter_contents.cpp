@@ -47,13 +47,14 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     "input/pose_topic", rclcpp::QoS(1),
     std::bind(&MapAreaFilterComponent::pose_callback, this, _1));
 
-  if (filter_type == 1) {
+  if (filter_type == 1 || filter_type == 3) {
     objects_cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-      "input/objects_cloud", rclcpp::SensorDataQoS(),
+      "input/additional_objects_cloud", rclcpp::SensorDataQoS(),
       std::bind(&MapAreaFilterComponent::objects_cloud_callback, this, _1));
     area_markers_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "pointcloud_filter_area", rclcpp::QoS(1));
-  } else if (filter_type == 2) {
+  }
+  if (filter_type == 2 || filter_type == 3) {
     objects_sub_ = this->create_subscription<PredictedObjects>(
       "input/objects", rclcpp::QoS(10),
       std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
@@ -61,7 +62,8 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
       this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
     area_markers_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "objects_filter_area", rclcpp::QoS(1));
-  } else {
+  }
+  if (filter_type != 1 && filter_type != 2 && filter_type != 3) {
     RCLCPP_ERROR_STREAM(
       this->get_logger(),
       "\nfilter_type: " << filter_type
@@ -112,6 +114,11 @@ void MapAreaFilterComponent::color_func(double dis, std_msgs::msg::ColorRGBA & c
     color.r = 1.;
     color.g = 0. + dis;
     color.b = 0. + dis;
+    color.a = 0.5;
+  } else if (filter_type == 3) {
+    color.r = 1.;
+    color.g = 0. + dis;
+    color.b = 1.;
     color.a = 0.5;
   }
 }
@@ -201,13 +208,8 @@ void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstShare
 void MapAreaFilterComponent::csv_row_func(
   const csv::CSVRow & row, std::deque<csv::CSVRow> & rows, std::size_t row_i)
 {
-  if (filter_type == 2) {
-    rows.emplace_back(row);
-    original_csv_order_.emplace_back(row_i);
-  } else if (filter_type == 1) {
-    rows.emplace_front(row);
-    original_csv_order_.emplace_front(row_i);
-  }
+  rows.emplace_back(row);
+  original_csv_order_.emplace_back(row_i);
 }
 
 void MapAreaFilterComponent::row_to_rowpoints(
@@ -219,7 +221,7 @@ void MapAreaFilterComponent::row_to_rowpoints(
   for (csv::CSVField & field : row) {  // 各列に対して
     areatype = AreaType::DELETE_OBJECT;
     if (i == 0) {  // first column contains type of area.
-      if (filter_type == 2) {
+      if (filter_type == 2 || filter_type == 3) {
         uint8_t label = (uint8_t)field.get<int>(correct_elem);
         if (correct_elem) {
           area_labels.emplace_back(label);
@@ -324,18 +326,21 @@ void MapAreaFilterComponent::filter_points_by_area(
   std::vector<bool> area_check(polygon_size, false);
   for (std::size_t area_i = 0; area_i < polygon_size; area_i++) {
     const auto & centroid = centroid_polygons_[area_i];
-    double distance = sqrt(
-      (centroid.x() - current_pose_.pose.position.x) *
-        (centroid.x() - current_pose_.pose.position.x) +
-      (centroid.y() - current_pose_.pose.position.y) *
-        (centroid.y() - current_pose_.pose.position.y));
+    auto map2baselink = transform_listener_.getLatestTransform("map", "base_link");
+
+    if (!map2baselink) {
+      RCLCPP_ERROR_STREAM(this->get_logger(), "Failed to get map to baselink transform");
+      continue;
+    }
+    const auto & ego_pos_map = map2baselink->transform.translation;
+    double distance = std::hypot(centroid.x() - ego_pos_map.x, centroid.y() - ego_pos_map.y);
 
     area_check[area_i] = (distance <= area_distance_check_);
   }  // for polygons
 
   const auto point_size = input->points.size();  // subscribeされた点群のtopic
   std::vector<bool> within(point_size, true);
-#pragma omp parallel for
+#pragma omp parallel for num_threads(1)
   for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
     const auto point = input->points[point_i];
     bool _within = false;
@@ -343,12 +348,9 @@ void MapAreaFilterComponent::filter_points_by_area(
       if (!area_check[area_i]) continue;
 
       if (boost::geometry::within(PointXY(point.x, point.y), area_polygons_[area_i])) {
-        if (filter_type == 1) {
-          _within = true;
-        }
+        _within = true;
       }
     }
-
     within[point_i] = _within;  // delete all領域に入っているか
   }
 

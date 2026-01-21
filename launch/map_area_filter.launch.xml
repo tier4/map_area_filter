@@ -2,6 +2,8 @@
     <arg name="input/pose_topic" default="/localization/pose_estimator/pose"/>
     <arg name="input/objects" default="/perception/object_recognition/detection/objects"/>
     <arg name="output/objects" default="/perception/object_recognition/objects_tmp"/>
+    <arg name="input/objects_cloud" default="/perception/obstacle_segmentation/obstacle_pointcloud"/>
+    <arg name="output/objects_cloud" default="/perception/obstacle_segmentation/map_filtered_pointcloud"/>
     <!-- 1:pointcloud 2:objects -->
     <arg name="filter_type" default="2"/>
     <arg name="area_distance_check" default="200"/>
@@ -12,6 +14,8 @@
       <remap from="input/pose_topic" to="$(var input/pose_topic)"/>
       <remap from="input/objects" to="$(var input/objects)"/>
       <remap from="output/objects" to="$(var output/objects)"/>
+      <remap from="input/objects_cloud" to="$(var input/objects_cloud)"/>
+      <remap from="output/objects_cloud" to="$(var output/objects_cloud)"/>
       <param name="area_distance_check" value="$(var area_distance_check)"/>
       <!-- 1:pointcloud 2:objects -->
       <param name="filter_type" value="$(var filter_type)"/>
