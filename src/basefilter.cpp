@@ -89,7 +89,7 @@ map_area_filter::Filter::Filter(
   // Set publisher
   {
     pub_output_ = this->create_publisher<PointCloud2>(
-      "output", rclcpp::SensorDataQoS().keep_last(max_queue_size_));
+      "output/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_));
   }
 
   subscribe();
@@ -138,7 +138,7 @@ void map_area_filter::Filter::subscribe()
     std::function<void(const PointCloud2ConstPtr msg)> cb = std::bind(
       &Filter::input_indices_callback, this, std::placeholders::_1, PointIndicesConstPtr());
     sub_input_ = create_subscription<PointCloud2>(
-      "input", rclcpp::SensorDataQoS().keep_last(max_queue_size_), cb);
+      "input/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_), cb);
   }
 }
 

@@ -22,6 +22,7 @@
 #include <pcl/common/impl/common.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
@@ -74,7 +75,7 @@ protected:
 
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr area_markers_pub_;
   rclcpp::Publisher<PredictedObjects>::SharedPtr filtered_objects_pub_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr objects_cloud_sub_;
   rclcpp::Subscription<PredictedObjects>::SharedPtr objects_sub_;
 
@@ -90,18 +91,17 @@ protected:
   std::vector<AreaType> area_types_;
   std::vector<Polygon2D> area_polygons_;
   std::vector<uint8_t> area_labels;
-  std::vector<PointXY> centroid_polygons_;
   std::deque<std::size_t> original_csv_order_;
 
   visualization_msgs::msg::MarkerArray area_markers_msg_;
 
-  geometry_msgs::msg::PoseStamped current_pose_;
+  nav_msgs::msg::Odometry kinematic_state_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr objects_cloud_ptr_;
   boost::optional<PredictedObjects::ConstSharedPtr> objects_ptr_;
 
   rclcpp::TimerBase::SharedPtr timer_;
 
-  double area_distance_check_;
+  double min_guaranteed_area_distance_;
   double marker_font_scale_;
 
   /***
@@ -121,7 +121,7 @@ protected:
   bool filter_objects_by_area(PredictedObjects & out_objects);
 
   void timer_callback();
-  void pose_callback(const geometry_msgs::msg::PoseStamped::ConstSharedPtr & pose_msg);
+  void odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & odom_msg);
   void objects_cloud_callback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud_msg);
   void objects_callback(const PredictedObjects::ConstSharedPtr & cloud_msg);
 

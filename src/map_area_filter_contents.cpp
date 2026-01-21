@@ -35,23 +35,25 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
   base_link_frame_ =
     static_cast<std::string>(this->declare_parameter("base_link_frame", "base_link"));
   map_area_csv = static_cast<std::string>(this->declare_parameter("map_area_csv", ""));
-  area_distance_check_ = static_cast<double>(this->declare_parameter("area_distance_check", 300));
+  min_guaranteed_area_distance_ =
+    static_cast<double>(this->declare_parameter("min_guaranteed_area_distance", 30));
   marker_font_scale_ = static_cast<double>(this->declare_parameter("marker_font_scale", 1.0));
   // 1: pointcloud_filter 2: object_filter
   filter_type = static_cast<double>(this->declare_parameter("filter_type", 1));
   area_labels.reserve(10000);
 
-  pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-    "input/pose_topic", rclcpp::QoS(1),
-    std::bind(&MapAreaFilterComponent::pose_callback, this, _1));
+  odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+    "input/odometry", rclcpp::QoS(1),
+    std::bind(&MapAreaFilterComponent::odometry_callback, this, _1));
 
-  if (filter_type == 1) {
+  if (filter_type == 1 || filter_type == 3) {
     objects_cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-      "input/objects_cloud", rclcpp::SensorDataQoS(),
+      "input/additional_objects_cloud", rclcpp::SensorDataQoS(),
       std::bind(&MapAreaFilterComponent::objects_cloud_callback, this, _1));
     area_markers_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "pointcloud_filter_area", rclcpp::QoS(1));
-  } else if (filter_type == 2) {
+  }
+  if (filter_type == 2 || filter_type == 3) {
     objects_sub_ = this->create_subscription<PredictedObjects>(
       "input/objects", rclcpp::QoS(10),
       std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
@@ -59,7 +61,8 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
       this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
     area_markers_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "objects_filter_area", rclcpp::QoS(1));
-  } else {
+  }
+  if (filter_type != 1 && filter_type != 2 && filter_type != 3) {
     RCLCPP_ERROR_STREAM(
       this->get_logger(),
       "\nfilter_type: " << filter_type
@@ -110,6 +113,11 @@ void MapAreaFilterComponent::color_func(double dis, std_msgs::msg::ColorRGBA & c
     color.r = 1.;
     color.g = 0. + dis;
     color.b = 0. + dis;
+    color.a = 0.5;
+  } else if (filter_type == 3) {
+    color.r = 1.;
+    color.g = 0. + dis;
+    color.b = 1.;
     color.a = 0.5;
   }
 }
@@ -169,11 +177,10 @@ void MapAreaFilterComponent::timer_callback()
   area_markers_pub_->publish(area_markers_msg_);
 }
 
-void MapAreaFilterComponent::pose_callback(
-  const geometry_msgs::msg::PoseStamped::ConstSharedPtr & msg)
+void MapAreaFilterComponent::odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & msg)
 {
   std::scoped_lock lock(mutex_);
-  current_pose_ = *msg;
+  kinematic_state_ = *msg;
 }
 
 void MapAreaFilterComponent::objects_cloud_callback(
@@ -199,13 +206,8 @@ void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstShare
 void MapAreaFilterComponent::csv_row_func(
   const csv::CSVRow & row, std::deque<csv::CSVRow> & rows, std::size_t row_i)
 {
-  if (filter_type == 2) {
-    rows.emplace_back(row);
-    original_csv_order_.emplace_back(row_i);
-  } else if (filter_type == 1) {
-    rows.emplace_front(row);
-    original_csv_order_.emplace_front(row_i);
-  }
+  rows.emplace_back(row);
+  original_csv_order_.emplace_back(row_i);
 }
 
 void MapAreaFilterComponent::row_to_rowpoints(
@@ -217,7 +219,7 @@ void MapAreaFilterComponent::row_to_rowpoints(
   for (csv::CSVField & field : row) {  // 各列に対して
     areatype = AreaType::DELETE_OBJECT;
     if (i == 0) {  // first column contains type of area.
-      if (filter_type == 2) {
+      if (filter_type == 2 || filter_type == 3) {
         uint8_t label = (uint8_t)field.get<int>(correct_elem);
         if (correct_elem) {
           area_labels.emplace_back(label);
@@ -274,9 +276,6 @@ bool MapAreaFilterComponent::load_areas_from_csv(const std::string & file_name)
                            << boost::geometry::area(current_polygon) << " and its type is "
                            << static_cast<int>(areatype));
       if (boost::geometry::area(current_polygon) > 0) {
-        PointXY centroid(0.f, 0.f);
-        boost::geometry::centroid(current_polygon, centroid);
-        centroid_polygons_.emplace_back(centroid);  // 多角形の重心の集合
         area_polygons_.emplace_back(
           current_polygon);  // 多角形の集合(areatypeが適切でないものは無視)
       } else {
@@ -319,35 +318,40 @@ void MapAreaFilterComponent::filter_points_by_area(
 {
   const auto polygon_size = area_polygons_.size();
 
+  // (v^2) / (2*a) + min_distance
+  constexpr double a = 0.8;  // m/s^2
+  const double attention_length =
+    std::pow(kinematic_state_.twist.twist.linear.x, 2) / (2.0 * a) + min_guaranteed_area_distance_;
+
   std::vector<bool> area_check(polygon_size, false);
   for (std::size_t area_i = 0; area_i < polygon_size; area_i++) {
-    const auto & centroid = centroid_polygons_[area_i];
-    double distance = sqrt(
-      (centroid.x() - current_pose_.pose.position.x) *
-        (centroid.x() - current_pose_.pose.position.x) +
-      (centroid.y() - current_pose_.pose.position.y) *
-        (centroid.y() - current_pose_.pose.position.y));
+    for (const auto & vertex_point : area_polygons_[area_i].outer()) {
+      const double dist_to_vertex = std::hypot(
+        vertex_point.x() - kinematic_state_.pose.pose.position.x,
+        vertex_point.y() - kinematic_state_.pose.pose.position.y);
+      if (dist_to_vertex < attention_length) {
+        area_check[area_i] = true;
+        break;
+      }
+    }
+    if (area_check[area_i]) continue;
 
-    area_check[area_i] = (distance <= area_distance_check_);
+    const double dist_to_polygon = boost::geometry::distance(
+      area_polygons_[area_i],
+      PointXY(kinematic_state_.pose.pose.position.x, kinematic_state_.pose.pose.position.y));
+    area_check[area_i] = (dist_to_polygon < attention_length);
   }  // for polygons
 
   const auto point_size = input->points.size();  // subscribeされた点群のtopic
-  std::vector<bool> within(point_size, true);
-#pragma omp parallel for
+  std::vector<bool> within(point_size, false);
+#pragma omp parallel for num_threads(1)
   for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
-    const auto point = input->points[point_i];
-    bool _within = false;
+    const auto & point = input->points[point_i];
     for (std::size_t area_i = 0; area_i < polygon_size; area_i++) {
       if (!area_check[area_i]) continue;
 
-      if (boost::geometry::within(PointXY(point.x, point.y), area_polygons_[area_i])) {
-        if (filter_type == 1) {
-          _within = true;
-        }
-      }
+      within[point_i] = boost::geometry::within(PointXY(point.x, point.y), area_polygons_[area_i]);
     }
-
-    within[point_i] = _within;  // delete all領域に入っているか
   }
 
   for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
@@ -488,9 +492,10 @@ rcl_interfaces::msg::SetParametersResult MapAreaFilterComponent::paramCallback(
     RCLCPP_DEBUG(
       this->get_logger(), "Setting new base link frame to: %s.", base_link_frame_.c_str());
   }
-  if (get_param(p, "area_distance_check", area_distance_check_)) {
+  if (get_param(p, "min_guaranteed_area_distance", min_guaranteed_area_distance_)) {
     RCLCPP_DEBUG(
-      this->get_logger(), "Setting new area check distance to: %.2lf.", area_distance_check_);
+      this->get_logger(), "Setting new area check distance to: %.2lf.",
+      min_guaranteed_area_distance_);
   }
 
   rcl_interfaces::msg::SetParametersResult result;
