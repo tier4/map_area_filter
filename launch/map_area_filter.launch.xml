@@ -1,19 +1,23 @@
 <launch>
-    <arg name="input/pose_topic" default="/localization/pose_estimator/pose"/>
+    <arg name="input/odometry" default="/localization/kinematic_state"/>
     <arg name="input/objects" default="/perception/object_recognition/detection/objects"/>
     <arg name="output/objects" default="/perception/object_recognition/objects_tmp"/>
+    <arg name="input/objects_cloud" default="/perception/obstacle_segmentation/obstacle_pointcloud"/>
+    <arg name="output/objects_cloud" default="/perception/obstacle_segmentation/map_filtered_pointcloud"/>
     <!-- 1:pointcloud 2:objects -->
     <arg name="filter_type" default="2"/>
-    <arg name="area_distance_check" default="200"/>
+    <arg name="min_guaranteed_area_distance" default="100"/>
     <arg name="map_area_filter_path" default="$(find-pkg-share map_area_filter)/config/area_map_filter.csv"/>
 
     <!-- Node -->
     <node pkg="map_area_filter" exec="map_area_filter" name="map_area_objects_filter" output="screen">
-      <remap from="input/pose_topic" to="$(var input/pose_topic)"/>
+      <remap from="input/odometry" to="$(var input/odometry)"/>
       <remap from="input/objects" to="$(var input/objects)"/>
       <remap from="output/objects" to="$(var output/objects)"/>
-      <param name="area_distance_check" value="$(var area_distance_check)"/>
-      <!-- 1:pointcloud 2:objects -->
+      <remap from="input/objects_cloud" to="$(var input/objects_cloud)"/>
+      <remap from="output/objects_cloud" to="$(var output/objects_cloud)"/>
+      <param name="min_guaranteed_area_distance" value="$(var min_guaranteed_area_distance)"/>
+      <!-- 1:pointcloud 2:objects 3:both -->
       <param name="filter_type" value="$(var filter_type)"/>
       <param name="map_area_csv" value="$(var map_area_filter_path)"/>
     </node>
