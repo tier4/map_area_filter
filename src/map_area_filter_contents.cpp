@@ -16,6 +16,66 @@
 
 #include "map_area_filter_contents.hpp"
 
+#include "autoware_lanelet2_extension/utility/message_conversion.hpp"
+#include "autoware_lanelet2_extension/utility/query.hpp"
+#include "autoware_lanelet2_extension/utility/utilities.hpp"
+
+#include <autoware_utils_geometry/boost_polygon_utils.hpp>
+
+#include <boost/format.hpp>
+#include <boost/geometry/algorithms/append.hpp>
+#include <boost/geometry/algorithms/assign.hpp>
+#include <boost/geometry/algorithms/correct.hpp>
+#include <boost/geometry/algorithms/intersects.hpp>
+#include <boost/geometry/algorithms/within.hpp>
+
+#include <lanelet2_core/geometry/LineString.h>
+#include <lanelet2_core/geometry/Polygon.h>
+
+#define debug(var)             \
+  do {                         \
+    std::cerr << #var << ": "; \
+    view(var);                 \
+  } while (0)
+template <typename T>
+void view(T e)
+{
+  std::cerr << e << std::endl;
+}
+template <typename T>
+void view(const std::vector<T> & v)
+{
+  for (const auto & e : v) {
+    std::cerr << e << " ";
+  }
+  std::cerr << std::endl;
+}
+template <typename T>
+void view(const std::vector<std::vector<T> > & vv)
+{
+  for (const auto & v : vv) {
+    view(v);
+  }
+}
+#define line()                          \
+  {                                     \
+    std::cerr << __LINE__ << std::endl; \
+  }
+
+namespace
+{
+using autoware_perception_msgs::msg::ObjectClassification;
+const std::unordered_map<uint8_t, std::string> object_classification_map_ = {
+  {ObjectClassification::UNKNOWN, "unknown"},
+  {ObjectClassification::CAR, "car"},
+  {ObjectClassification::TRUCK, "truck"},
+  {ObjectClassification::BUS, "bus"},
+  {ObjectClassification::TRAILER, "trailer"},
+  {ObjectClassification::MOTORCYCLE, "motorcycle"},
+  {ObjectClassification::PEDESTRIAN, "pedestrian"},
+  {ObjectClassification::BICYCLE, "bicycle"}};
+}  // namespace
+
 namespace map_area_filter
 {
 
@@ -45,6 +105,9 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
   odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
     "input/odometry", rclcpp::QoS(1),
     std::bind(&MapAreaFilterComponent::odometry_callback, this, _1));
+  lanelet_map_sub_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
+    "input/vector_map", rclcpp::QoS(10).transient_local(),
+    std::bind(&MapAreaFilterComponent::lanelet_map_callback, this, _1));
 
   if (filter_type == 1 || filter_type == 3) {
     objects_cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -128,6 +191,8 @@ void MapAreaFilterComponent::create_area_marker_msg()
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> dist(0.0, 0.5);
 
+  area_markers_msg_.markers.clear();
+
   for (std::size_t i = 0, size = area_polygons_.size(); i < size; i++) {
     visualization_msgs::msg::Marker area;
     area.ns = "polygon";
@@ -170,6 +235,48 @@ void MapAreaFilterComponent::create_area_marker_msg()
     text.color = color;
     area_markers_msg_.markers.emplace_back(text);
   }
+
+  for (const auto & removal_area : removal_areas_) {
+    visualization_msgs::msg::Marker area;
+    area.ns = "polygon";
+    area.header.frame_id = map_frame_;
+    area.id = 10;
+    area.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    area.action = visualization_msgs::msg::Marker::MODIFY;
+
+    std_msgs::msg::ColorRGBA color;
+    color_func(dist(gen), color);
+
+    area.color = color;
+
+    area.scale.x = 0.1;
+    area.scale.y = 0.1;
+    area.scale.z = 0.1;
+
+    for (const auto & vertex : removal_area.polygon) {
+      geometry_msgs::msg::Point point;
+      point.x = vertex.x();
+      point.y = vertex.y();
+      area.points.emplace_back(point);
+    }
+    area.points.emplace_back(area.points.front());
+    area_markers_msg_.markers.emplace_back(area);
+
+    visualization_msgs::msg::Marker text;
+    text.header.frame_id = map_frame_;
+    text.ns = "id";
+    text.id = 11;
+    text.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    text.action = visualization_msgs::msg::Marker::ADD;
+
+    text.pose.position.x = static_cast<double>(area.points[0].x);
+    text.pose.position.y = static_cast<double>(area.points[0].y);
+    text.pose.position.z = 0.0;
+    text.scale.z = marker_font_scale_;
+    text.text = "lanelet_removal_area";
+    text.color = color;
+    area_markers_msg_.markers.emplace_back(text);
+  }
 }
 
 void MapAreaFilterComponent::timer_callback()
@@ -181,6 +288,73 @@ void MapAreaFilterComponent::odometry_callback(const nav_msgs::msg::Odometry::Co
 {
   std::scoped_lock lock(mutex_);
   kinematic_state_ = *msg;
+}
+
+void MapAreaFilterComponent::lanelet_map_callback(
+  const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr & msg)
+{
+  std::scoped_lock lock(mutex_);
+
+  route_handler_.setMap(*msg);
+  const auto lanelet_map_ptr = route_handler_.getLaneletMapPtr();
+
+  removal_areas_.clear();
+
+  if (!lanelet_map_ptr) {
+    return;
+  }
+
+  for (const auto & polygon_layer_elemet : lanelet_map_ptr->polygonLayer) {
+    std::string type_val = polygon_layer_elemet.attributeOr(lanelet::AttributeName::Type, "");
+
+    if (type_val != "map_area_filter") {
+      continue;
+    }
+
+    RemovalArea removal_area;
+    removal_area.id = polygon_layer_elemet.id();
+    removal_area.polygon = lanelet::utils::to2D(polygon_layer_elemet).basicPolygon();
+    boost::geometry::correct(removal_area.polygon);
+
+    for (const auto & attribute : polygon_layer_elemet.attributes()) {
+      const std::string key = attribute.first;
+      const std::string value = attribute.second.value();
+
+      if (key == "max_removal_height") {
+        try {
+          removal_area.max_removal_height = std::stod(value);
+        } catch (const std::exception & e) {
+          RCLCPP_WARN(
+            this->get_logger(), "Invalid max_height for polygon %ld: %s", polygon_layer_elemet.id(),
+            e.what());
+        }
+      } else if (key == "min_removal_height") {
+        try {
+          removal_area.min_removal_height = std::stod(value);
+        } catch (const std::exception & e) {
+          RCLCPP_WARN(
+            this->get_logger(), "Invalid min_height for polygon %ld: %s", polygon_layer_elemet.id(),
+            e.what());
+        }
+      } else if (key != "type" && key != "subtype") {
+        if (value == "remove") {
+          removal_area.target_labels.insert(key);
+        }
+      }
+    }
+
+    if (!removal_area.target_labels.empty()) {
+      removal_areas_.push_back(removal_area);
+
+      RCLCPP_INFO(
+        this->get_logger(), "Added Removal Area ID:%ld, Targets:%lu, H:[%.1f, %.1f]",
+        polygon_layer_elemet.id(), removal_area.target_labels.size(),
+        removal_area.min_removal_height.value_or(-std::numeric_limits<double>::infinity()),
+        removal_area.max_removal_height.value_or(std::numeric_limits<double>::infinity()));
+    }
+  }
+
+  create_area_marker_msg();
 }
 
 void MapAreaFilterComponent::objects_cloud_callback(
@@ -392,14 +566,29 @@ bool MapAreaFilterComponent::filter_objects_by_area(
     double map2ob_x = ego_pose.x + ego2ob.x * std::cos(yaw) - ego2ob.y * std::sin(yaw);
     double map2ob_y = ego_pose.y + ego2ob.x * std::sin(yaw) + ego2ob.y * std::cos(yaw);
 
-    for (std::size_t area_i = 0, size = area_polygons_.size(); area_i < size;
-         ++area_i) {  // 各領域に対して
+    for (std::size_t area_i = 0, size = area_polygons_.size(); area_i < size; ++area_i) {
       if ((boost::geometry::within(
             PointXY(map2ob_x, map2ob_y),
             area_polygons_[area_i]))) {  // 各領域にオブジェクトの重心が入っているなら
         if (object_label == area_labels[area_i] || area_labels[area_i] == (uint8_t)8) {
           within = true;
         }
+      }
+    }
+
+    for (const auto & removal_area : removal_areas_) {
+      // TODO (takagi): ego - area distance check
+
+      if (
+        removal_area.target_labels.find(object_classification_map_.at(object_label)) ==
+          removal_area.target_labels.end() &&
+        removal_area.target_labels.find("all") == removal_area.target_labels.end()) {
+        continue;
+      }
+
+      // todo (takagi): height check
+      if (boost::geometry::within(PointXY(map2ob_x, map2ob_y), removal_area.polygon)) {
+        within = true;
       }
     }
     if (!within) {  // 各オブジェクトが領域に属しているか(within==trueか)
