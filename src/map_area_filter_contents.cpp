@@ -36,7 +36,7 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     static_cast<std::string>(this->declare_parameter("base_link_frame", "base_link"));
   map_area_csv = static_cast<std::string>(this->declare_parameter("map_area_csv", ""));
   min_guaranteed_area_distance_ =
-    static_cast<double>(this->declare_parameter("min_guaranteed_area_distance", 30));
+    static_cast<double>(this->declare_parameter("min_guaranteed_area_distance", 100));
   marker_font_scale_ = static_cast<double>(this->declare_parameter("marker_font_scale", 1.0));
   // 1: pointcloud_filter 2: object_filter
   filter_type = static_cast<double>(this->declare_parameter("filter_type", 1));
@@ -319,7 +319,7 @@ void MapAreaFilterComponent::filter_points_by_area(
   const auto polygon_size = area_polygons_.size();
 
   // (v^2) / (2*a) + min_distance
-  constexpr double a = 0.8;  // m/s^2
+  constexpr double a = 1.0;  // m/s^2
   const double attention_length =
     std::pow(kinematic_state_.twist.twist.linear.x, 2) / (2.0 * a) + min_guaranteed_area_distance_;
 
@@ -350,7 +350,10 @@ void MapAreaFilterComponent::filter_points_by_area(
     for (std::size_t area_i = 0; area_i < polygon_size; area_i++) {
       if (!area_check[area_i]) continue;
 
-      within[point_i] = boost::geometry::within(PointXY(point.x, point.y), area_polygons_[area_i]);
+      if (boost::geometry::within(PointXY(point.x, point.y), area_polygons_[area_i])) {
+        within[point_i] = true;
+        break;
+      }
     }
   }
 

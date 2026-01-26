@@ -6,7 +6,7 @@
     <arg name="output/objects_cloud" default="/perception/obstacle_segmentation/map_filtered_pointcloud"/>
     <!-- 1:pointcloud 2:objects -->
     <arg name="filter_type" default="2"/>
-    <arg name="min_guaranteed_area_distance" default="30"/>
+    <arg name="min_guaranteed_area_distance" default="100"/>
     <arg name="map_area_filter_path" default="$(find-pkg-share map_area_filter)/config/area_map_filter.csv"/>
 
     <!-- Node -->
