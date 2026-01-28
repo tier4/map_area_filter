@@ -4,6 +4,7 @@
     <arg name="output/objects" default="/perception/object_recognition/objects_tmp"/>
     <arg name="input/objects_cloud" default="/perception/obstacle_segmentation/obstacle_pointcloud"/>
     <arg name="output/objects_cloud" default="/perception/obstacle_segmentation/map_filtered_pointcloud"/>
+    <arg name="input/vector_map" default="/map/vector_map"/>
     <!-- 1:pointcloud 2:objects -->
     <arg name="filter_type" default="2"/>
     <arg name="min_guaranteed_area_distance" default="100"/>
@@ -16,6 +17,7 @@
       <remap from="output/objects" to="$(var output/objects)"/>
       <remap from="input/objects_cloud" to="$(var input/objects_cloud)"/>
       <remap from="output/objects_cloud" to="$(var output/objects_cloud)"/>
+      <remap from="input/vector_map" to="$(var input/vector_map)"/>
       <param name="min_guaranteed_area_distance" value="$(var min_guaranteed_area_distance)"/>
       <!-- 1:pointcloud 2:objects 3:both -->
       <param name="filter_type" value="$(var filter_type)"/>

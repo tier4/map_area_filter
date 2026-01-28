@@ -16,23 +16,21 @@
 
 #pragma once
 #include "basefilter.hpp"
-#include "csv.hpp"
 
+#include <autoware/route_handler/route_handler.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <pcl/common/impl/common.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
-#include <nav_msgs/msg/odometry.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <boost/assign/std/vector.hpp>
 #include <boost/geometry.hpp>
-#include <boost/geometry/algorithms/area.hpp>
-#include <boost/geometry/algorithms/assign.hpp>
 #include <boost/geometry/geometries/point_xy.hpp>
 #include <boost/geometry/geometries/polygon.hpp>
 #include <boost/optional.hpp>
@@ -45,12 +43,23 @@
 
 namespace map_area_filter
 {
-enum class AreaType {
-  DELETE_ALL,     // Delete static and dynamic cloud
-  DELETE_OBJECT,  // Delete predicted object bbox
-};
+typedef boost::geometry::model::d2::point_xy<float> PointXY;
+typedef boost::geometry::model::polygon<PointXY> Polygon2D;
 
 using autoware_perception_msgs::msg::PredictedObjects;
+
+class RemovalArea
+{
+public:
+  lanelet::Id id_;
+  std::unordered_set<std::string> target_labels_;
+  lanelet::BasicPolygon2d polygon_;
+  std::optional<double> min_removal_height_{std::nullopt};
+  std::optional<double> max_removal_height_{std::nullopt};
+  bool is_in_distance_{false};
+
+  void update_is_in_distance(geometry_msgs::msg::Point pos, double distance);
+};
 
 class MapAreaFilterComponent : public map_area_filter::Filter
 {
@@ -61,10 +70,8 @@ protected:
   void subscribe() override;
   void unsubscribe() override;
 
-  bool do_filter_, csv_loaded_ = true;
+  bool do_filter_ = true;
   int filter_type;
-  bool csv_invalid =
-    false;  // csv fileが開けない、pathが違うなどの問題が存在するか(正しくないならfilterしない
 
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
@@ -78,6 +85,7 @@ protected:
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr objects_cloud_sub_;
   rclcpp::Subscription<PredictedObjects>::SharedPtr objects_sub_;
+  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr lanelet_map_sub_;
 
   // private:
   std::shared_ptr<tf2_ros::Buffer> tf2_;
@@ -85,17 +93,13 @@ protected:
 
   std::string map_frame_;
   std::string base_link_frame_;
-  typedef boost::geometry::model::d2::point_xy<float> PointXY;
-  typedef boost::geometry::model::polygon<PointXY> Polygon2D;
 
-  std::vector<AreaType> area_types_;
-  std::vector<Polygon2D> area_polygons_;
-  std::vector<uint8_t> area_labels;
-  std::deque<std::size_t> original_csv_order_;
+  std::vector<RemovalArea> removal_areas_;
 
   visualization_msgs::msg::MarkerArray area_markers_msg_;
 
   nav_msgs::msg::Odometry kinematic_state_;
+  autoware::route_handler::RouteHandler route_handler_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr objects_cloud_ptr_;
   boost::optional<PredictedObjects::ConstSharedPtr> objects_ptr_;
 
@@ -104,24 +108,13 @@ protected:
   double min_guaranteed_area_distance_;
   double marker_font_scale_;
 
-  /***
-   * Returns true if valid polygons were found in the CSV
-   * @param file_name CSV to parse and load polygons
-   * @return true if valid polygons were found in the CSV
-   */
-  void csv_row_func(const csv::CSVRow & row, std::deque<csv::CSVRow> & rows, std::size_t row_i);
-  void row_to_rowpoints(
-    const csv::CSVRow & row, std::vector<PointXY> & row_points, AreaType & areatype,
-    bool & correct_elem);
-
-  bool load_areas_from_csv(const std::string & file_name);
-
   void filter_points_by_area(
     const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
   bool filter_objects_by_area(PredictedObjects & out_objects);
 
   void timer_callback();
   void odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & odom_msg);
+  void lanelet_map_callback(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr & msg);
   void objects_cloud_callback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud_msg);
   void objects_callback(const PredictedObjects::ConstSharedPtr & cloud_msg);
 
