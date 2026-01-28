@@ -16,7 +16,6 @@
 
 #include "map_area_filter_contents.hpp"
 
-#include <boost/geometry/algorithms/within.hpp>
 #include <lanelet2_core/geometry/Polygon.h>
 
 namespace
