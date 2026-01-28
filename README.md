@@ -49,5 +49,20 @@ You can specify a height range to restrict the removal area.
 * **Setting `min_removal_height: 2.0`**
   Used to prevent false detections of overhead structures (e.g., objects above 2.0m).
 
+#### Example
+```xml
+  <way id="89151">
+    <nd ref="89141"/>
+    <nd ref="89145"/>
+    <nd ref="89146"/>
+    <nd ref="89150"/>
+    <nd ref="89141"/>
+    <tag k="type" v="map_area_filter"/>
+    <tag k="subtype" v="removal_area"/>
+    <tag k="unknown" v="remove"/>
+    <tag k="pointcloud" v="remove"/>
+  </way>
+```
+
 ## memo
 Topics of viewing filtering areas are `pointcloud_filter_area`, `objects_filter_area`.
