@@ -59,6 +59,7 @@ You can specify a height range to restrict the removal area.
     <nd ref="89141"/>
     <tag k="type" v="map_area_filter"/>
     <tag k="subtype" v="removal_area"/>
+    <tag k="area" v="yes"/>
     <tag k="unknown" v="remove"/>
     <tag k="pointcloud" v="remove"/>
   </way>
