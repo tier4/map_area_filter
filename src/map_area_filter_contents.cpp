@@ -82,25 +82,36 @@ namespace map_area_filter
 using std::placeholders::_1;
 using namespace std::chrono_literals;
 
+void RemovalArea::update_is_in_distance(geometry_msgs::msg::Point pos, double distance)
+{
+  for (const auto & vertex_point : polygon_) {
+    const double dist_to_vertex = std::hypot(vertex_point.x() - pos.x, vertex_point.y() - pos.y);
+    if (dist_to_vertex < distance) {
+      is_in_distance_ = true;
+      return;
+    }
+  }
+  const double dist_to_polygon = boost::geometry::distance(polygon_, PointXY(pos.x, pos.y));
+  is_in_distance_ = (dist_to_polygon < distance);
+};
+
 // constructor
 MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & options)
 : Filter("MapAreaFilter", options)
 {
   pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
   // set initial parameters
-  std::string map_area_csv;
 
-  do_filter_ = static_cast<bool>(this->declare_parameter("do_filter", true));
   map_frame_ = static_cast<std::string>(this->declare_parameter("map_frame", "map"));
   base_link_frame_ =
     static_cast<std::string>(this->declare_parameter("base_link_frame", "base_link"));
-  map_area_csv = static_cast<std::string>(this->declare_parameter("map_area_csv", ""));
   min_guaranteed_area_distance_ =
     static_cast<double>(this->declare_parameter("min_guaranteed_area_distance", 100));
   marker_font_scale_ = static_cast<double>(this->declare_parameter("marker_font_scale", 1.0));
   // 1: pointcloud_filter 2: object_filter
   filter_type = static_cast<double>(this->declare_parameter("filter_type", 1));
-  area_labels.reserve(10000);
+  // todo (takagi): cleanup filter_type usage (combine with do_filter_,
+  // 常にトピックの受信は行うなど)
 
   odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
     "input/odometry", rclcpp::QoS(1),
@@ -136,23 +147,11 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&MapAreaFilterComponent::paramCallback, this, _1));
 
-  RCLCPP_INFO_STREAM(this->get_logger(), "Loading CSV: " << map_area_csv);
-  if (map_area_csv.empty() || !load_areas_from_csv(map_area_csv)) {
-    RCLCPP_ERROR_STREAM(
-      this->get_logger(), "Invalid CSV File provided: '" << map_area_csv << "'. Not filtering");
-    do_filter_ = false;
-    csv_invalid = false;
-  } else {
-    RCLCPP_INFO_STREAM(this->get_logger(), "Areas: " << area_polygons_.size());
+  rclcpp::Clock::SharedPtr clock = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
+  tf2_.reset(new tf2_ros::Buffer(clock));
+  tf2_listener_.reset(new tf2_ros::TransformListener(*tf2_));
 
-    rclcpp::Clock::SharedPtr clock = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
-    tf2_.reset(new tf2_ros::Buffer(clock));
-    tf2_listener_.reset(new tf2_ros::TransformListener(*tf2_));
-
-    timer_ = this->create_wall_timer(1s, std::bind(&MapAreaFilterComponent::timer_callback, this));
-
-    do_filter_ = true;
-  }
+  timer_ = this->create_wall_timer(1s, std::bind(&MapAreaFilterComponent::timer_callback, this));
 }
 
 void MapAreaFilterComponent::subscribe()
@@ -193,7 +192,7 @@ void MapAreaFilterComponent::create_area_marker_msg()
 
   area_markers_msg_.markers.clear();
 
-  for (std::size_t i = 0, size = area_polygons_.size(); i < size; i++) {
+  for (size_t i = 0; i < removal_areas_.size(); i++) {
     visualization_msgs::msg::Marker area;
     area.ns = "polygon";
     area.header.frame_id = map_frame_;
@@ -205,55 +204,11 @@ void MapAreaFilterComponent::create_area_marker_msg()
     color_func(dist(gen), color);
 
     area.color = color;
-
     area.scale.x = 0.1;
     area.scale.y = 0.1;
     area.scale.z = 0.1;
 
-    for (auto it = boost::begin(boost::geometry::exterior_ring(area_polygons_[i])),
-              end = boost::end(boost::geometry::exterior_ring(area_polygons_[i]));
-         it != end; ++it) {
-      geometry_msgs::msg::Point point;
-      point.x = it->x();
-      point.y = it->y();
-      area.points.emplace_back(point);
-    }
-    area_markers_msg_.markers.emplace_back(area);
-
-    visualization_msgs::msg::Marker text;
-    text.header.frame_id = map_frame_;
-    text.ns = "id";
-    text.id = size + i;
-    text.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-    text.action = visualization_msgs::msg::Marker::ADD;
-
-    text.pose.position.x = static_cast<double>(area.points[0].x);
-    text.pose.position.y = static_cast<double>(area.points[0].y);
-    text.pose.position.z = 0.0;
-    text.scale.z = marker_font_scale_;
-    text.text = std::to_string(original_csv_order_[i] + 1);
-    text.color = color;
-    area_markers_msg_.markers.emplace_back(text);
-  }
-
-  for (const auto & removal_area : removal_areas_) {
-    visualization_msgs::msg::Marker area;
-    area.ns = "polygon";
-    area.header.frame_id = map_frame_;
-    area.id = 10;
-    area.type = visualization_msgs::msg::Marker::LINE_STRIP;
-    area.action = visualization_msgs::msg::Marker::MODIFY;
-
-    std_msgs::msg::ColorRGBA color;
-    color_func(dist(gen), color);
-
-    area.color = color;
-
-    area.scale.x = 0.1;
-    area.scale.y = 0.1;
-    area.scale.z = 0.1;
-
-    for (const auto & vertex : removal_area.polygon) {
+    for (const auto & vertex : removal_areas_[i].polygon_) {
       geometry_msgs::msg::Point point;
       point.x = vertex.x();
       point.y = vertex.y();
@@ -265,7 +220,7 @@ void MapAreaFilterComponent::create_area_marker_msg()
     visualization_msgs::msg::Marker text;
     text.header.frame_id = map_frame_;
     text.ns = "id";
-    text.id = 11;
+    text.id = removal_areas_.size() + i;
     text.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
     text.action = visualization_msgs::msg::Marker::ADD;
 
@@ -273,7 +228,7 @@ void MapAreaFilterComponent::create_area_marker_msg()
     text.pose.position.y = static_cast<double>(area.points[0].y);
     text.pose.position.z = 0.0;
     text.scale.z = marker_font_scale_;
-    text.text = "lanelet_removal_area";
+    text.text = "map_area_filter_removal_area";
     text.color = color;
     area_markers_msg_.markers.emplace_back(text);
   }
@@ -312,9 +267,9 @@ void MapAreaFilterComponent::lanelet_map_callback(
     }
 
     RemovalArea removal_area;
-    removal_area.id = polygon_layer_elemet.id();
-    removal_area.polygon = lanelet::utils::to2D(polygon_layer_elemet).basicPolygon();
-    boost::geometry::correct(removal_area.polygon);
+    removal_area.id_ = polygon_layer_elemet.id();
+    removal_area.polygon_ = lanelet::utils::to2D(polygon_layer_elemet).basicPolygon();
+    boost::geometry::correct(removal_area.polygon_);
 
     for (const auto & attribute : polygon_layer_elemet.attributes()) {
       const std::string key = attribute.first;
@@ -322,38 +277,35 @@ void MapAreaFilterComponent::lanelet_map_callback(
 
       if (key == "max_removal_height") {
         try {
-          removal_area.max_removal_height = std::stod(value);
+          removal_area.max_removal_height_ = std::stod(value);
         } catch (const std::exception & e) {
           RCLCPP_WARN(
-            this->get_logger(), "Invalid max_height for polygon %ld: %s", polygon_layer_elemet.id(),
-            e.what());
+            this->get_logger(),
+            "Invalid value type against the key max_removal_height for polygon %ld: %s",
+            polygon_layer_elemet.id(), e.what());
         }
       } else if (key == "min_removal_height") {
         try {
-          removal_area.min_removal_height = std::stod(value);
+          removal_area.min_removal_height_ = std::stod(value);
         } catch (const std::exception & e) {
           RCLCPP_WARN(
-            this->get_logger(), "Invalid min_height for polygon %ld: %s", polygon_layer_elemet.id(),
-            e.what());
+            this->get_logger(),
+            "Invalid value type against the key min_removal_height for polygon %ld: %s",
+            polygon_layer_elemet.id(), e.what());
         }
       } else if (key != "type" && key != "subtype") {
         if (value == "remove") {
-          removal_area.target_labels.insert(key);
+          removal_area.target_labels_.insert(key);
         }
       }
     }
 
-    if (!removal_area.target_labels.empty()) {
+    if (!removal_area.target_labels_.empty()) {
       removal_areas_.push_back(removal_area);
-
-      RCLCPP_INFO(
-        this->get_logger(), "Added Removal Area ID:%ld, Targets:%lu, H:[%.1f, %.1f]",
-        polygon_layer_elemet.id(), removal_area.target_labels.size(),
-        removal_area.min_removal_height.value_or(-std::numeric_limits<double>::infinity()),
-        removal_area.max_removal_height.value_or(std::numeric_limits<double>::infinity()));
     }
   }
 
+  RCLCPP_INFO(this->get_logger(), "%lu removal areas are registered", removal_areas_.size());
   create_area_marker_msg();
 }
 
@@ -370,101 +322,11 @@ void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstShare
   objects_ptr_ = msg;
 
   PredictedObjects out_objects;
-  if (csv_invalid) {
+  if (!do_filter_ || removal_areas_.empty()) {
     filtered_objects_pub_->publish(*objects_ptr_.get());
   } else if (filter_objects_by_area(out_objects)) {
     filtered_objects_pub_->publish(out_objects);
   }
-}
-
-void MapAreaFilterComponent::csv_row_func(
-  const csv::CSVRow & row, std::deque<csv::CSVRow> & rows, std::size_t row_i)
-{
-  rows.emplace_back(row);
-  original_csv_order_.emplace_back(row_i);
-}
-
-void MapAreaFilterComponent::row_to_rowpoints(
-  const csv::CSVRow & row, std::vector<PointXY> & row_points, AreaType & areatype,
-  bool & correct_elem)
-{
-  size_t i = 0, j = -1;
-  float current_x = 0.f;
-  for (csv::CSVField & field : row) {  // 各列に対して
-    areatype = AreaType::DELETE_OBJECT;
-    if (i == 0) {  // first column contains type of area.
-      if (filter_type == 2 || filter_type == 3) {
-        uint8_t label = (uint8_t)field.get<int>(correct_elem);
-        if (correct_elem) {
-          area_labels.emplace_back(label);
-        }
-      }
-      i++;
-      j++;
-      continue;
-    }  // 1つ目の値を取り出す
-    float point = field.get<float>(correct_elem);
-    if (correct_elem) {
-      if (j % 2) {  // xをもとに(x,y)を取り出す
-        row_points.emplace_back(PointXY(current_x, point));
-      } else {
-        current_x = point;
-      }
-    }
-    j++;
-  }
-}
-
-bool MapAreaFilterComponent::load_areas_from_csv(const std::string & file_name)
-{
-  csv::CSVFormat format;
-  format.no_header();
-  format.variable_columns(csv::VariableColumnPolicy::KEEP);
-  csv::CSVReader reader(file_name, csv_loaded_, format);
-  if (!csv_loaded_) {
-    return false;
-  }
-  std::deque<csv::CSVRow> rows;
-  std::size_t row_i = 0;
-  for (const csv::CSVRow & row : reader) {
-    csv_row_func(row, rows, row_i);  // 列の順番を並び替えただけ
-
-    row_i++;
-  }
-
-  for (const csv::CSVRow & row : rows) {  // 各行に対して
-    std::vector<PointXY> row_points;
-    Polygon2D current_polygon;
-    AreaType areatype;
-    bool correct_elem = true;  // csv fileの各要素が正しい数値かどうか(正しくないならfilterしない)
-    row_to_rowpoints(row, row_points, areatype, correct_elem);  // 一列の情報をrow_pointsに格納
-    // current_polygonのログ、エラー処理
-    if (correct_elem && !row_points.empty()) {
-      boost::geometry::assign_points(current_polygon, row_points);
-      if (!boost::geometry::is_valid(current_polygon)) {
-        boost::geometry::correct(current_polygon);
-      }
-      RCLCPP_INFO_STREAM(  // Verbose output
-        this->get_logger(),
-        "Polygon in row: " << boost::geometry::dsv(current_polygon) << " has an area of "
-                           << boost::geometry::area(current_polygon) << " and its type is "
-                           << static_cast<int>(areatype));
-      if (boost::geometry::area(current_polygon) > 0) {
-        area_polygons_.emplace_back(
-          current_polygon);  // 多角形の集合(areatypeが適切でないものは無視)
-      } else {
-        RCLCPP_WARN_STREAM(
-          this->get_logger(), "Ignoring invalid polygon:" << boost::geometry::dsv(current_polygon));
-      }
-    } else {
-      RCLCPP_WARN_STREAM(this->get_logger(), "Invalid point in CSV:" << row.to_json());
-    }
-  }
-
-  csv_loaded_ = true;
-  create_area_marker_msg();  // csvの処理がされた多角形に色を付けて図示
-
-  return !area_polygons_.empty();
 }
 
 bool MapAreaFilterComponent::transform_pointcloud(  // output flame
@@ -490,41 +352,33 @@ bool MapAreaFilterComponent::transform_pointcloud(  // output flame
 void MapAreaFilterComponent::filter_points_by_area(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output)
 {
-  const auto polygon_size = area_polygons_.size();
-
   // (v^2) / (2*a) + min_distance
   constexpr double a = 1.0;  // m/s^2
   const double attention_length =
     std::pow(kinematic_state_.twist.twist.linear.x, 2) / (2.0 * a) + min_guaranteed_area_distance_;
 
-  std::vector<bool> area_check(polygon_size, false);
-  for (std::size_t area_i = 0; area_i < polygon_size; area_i++) {
-    for (const auto & vertex_point : area_polygons_[area_i].outer()) {
-      const double dist_to_vertex = std::hypot(
-        vertex_point.x() - kinematic_state_.pose.pose.position.x,
-        vertex_point.y() - kinematic_state_.pose.pose.position.y);
-      if (dist_to_vertex < attention_length) {
-        area_check[area_i] = true;
-        break;
-      }
-    }
-    if (area_check[area_i]) continue;
-
-    const double dist_to_polygon = boost::geometry::distance(
-      area_polygons_[area_i],
-      PointXY(kinematic_state_.pose.pose.position.x, kinematic_state_.pose.pose.position.y));
-    area_check[area_i] = (dist_to_polygon < attention_length);
-  }  // for polygons
+  for (auto & removal_area : removal_areas_) {
+    removal_area.update_is_in_distance(kinematic_state_.pose.pose.position, attention_length);
+  }
 
   const auto point_size = input->points.size();  // subscribeされた点群のtopic
   std::vector<bool> within(point_size, false);
 #pragma omp parallel for num_threads(1)
   for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
     const auto & point = input->points[point_i];
-    for (std::size_t area_i = 0; area_i < polygon_size; area_i++) {
-      if (!area_check[area_i]) continue;
+    for (const auto & removal_area : removal_areas_) {
+      if (!removal_area.is_in_distance_) {
+        continue;
+      }
 
-      if (boost::geometry::within(PointXY(point.x, point.y), area_polygons_[area_i])) {
+      if (
+        removal_area.target_labels_.count("pointcloud") == 0 &&
+        removal_area.target_labels_.count("all") == 0) {
+        continue;
+      }
+
+      if (boost::geometry::within(PointXY(point.x, point.y), removal_area.polygon_)) {
+        // todo (takagi): height check
         within[point_i] = true;
         break;
       }
@@ -535,13 +389,12 @@ void MapAreaFilterComponent::filter_points_by_area(
     if (!within[point_i]) {
       const auto point = input->points[point_i];
       output->points.emplace_back(pcl::PointXYZ(point.x, point.y, point.z));
+      // todo (takagi): restrict copy
     }
   }
 }
 
-bool MapAreaFilterComponent::filter_objects_by_area(
-  PredictedObjects &
-    out_objects)  // 各オブジェクトがオブジェクト削除領域に存在するなら消すという関数
+bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objects)
 {
   if (!objects_ptr_.has_value() || objects_ptr_.get() == nullptr) {
     return false;
@@ -549,55 +402,46 @@ bool MapAreaFilterComponent::filter_objects_by_area(
 
   const PredictedObjects in_objects = *objects_ptr_.get();  // input_objectのデータ
   out_objects.header = in_objects.header;
-  auto map2baselink = transform_listener_.getTransform(
-    "map",                       // src
-    in_objects.header.frame_id,  // target
-    in_objects.header.stamp, rclcpp::Duration::from_seconds(0.1));
-  for (const auto & object : in_objects.objects) {  // 各オブジェクトに対して
-    const auto ego_pose = map2baselink->transform.translation;
-    const auto ego2ob = object.kinematics.initial_pose_with_covariance.pose.position;
-    const auto object_label = object.classification[0].label;
+  assert(in_objects.header.frame_id == "map");
+
+  // (v^2) / (2*a) + min_distance
+  constexpr double a = 1.0;  // m/s^2
+  const double attention_length =
+    std::pow(kinematic_state_.twist.twist.linear.x, 2) / (2.0 * a) + min_guaranteed_area_distance_;
+
+  for (auto & removal_area : removal_areas_) {
+    removal_area.update_is_in_distance(kinematic_state_.pose.pose.position, attention_length);
+  }
+
+  for (const auto & object : in_objects.objects) {
     bool within = false;
 
-    auto quat_geo = map2baselink->transform.rotation;
-    tf2::Quaternion quat(quat_geo.x, quat_geo.y, quat_geo.z, quat_geo.w);
-    double r, p, yaw;                        // 出力値[rad]
-    tf2::Matrix3x3(quat).getRPY(r, p, yaw);  // クォータニオン→オイラー角
-    double map2ob_x = ego_pose.x + ego2ob.x * std::cos(yaw) - ego2ob.y * std::sin(yaw);
-    double map2ob_y = ego_pose.y + ego2ob.x * std::sin(yaw) + ego2ob.y * std::cos(yaw);
-
-    for (std::size_t area_i = 0, size = area_polygons_.size(); area_i < size; ++area_i) {
-      if ((boost::geometry::within(
-            PointXY(map2ob_x, map2ob_y),
-            area_polygons_[area_i]))) {  // 各領域にオブジェクトの重心が入っているなら
-        if (object_label == area_labels[area_i] || area_labels[area_i] == (uint8_t)8) {
-          within = true;
-        }
-      }
-    }
-
     for (const auto & removal_area : removal_areas_) {
-      // TODO (takagi): ego - area distance check
-
-      if (
-        removal_area.target_labels.find(object_classification_map_.at(object_label)) ==
-          removal_area.target_labels.end() &&
-        removal_area.target_labels.find("all") == removal_area.target_labels.end()) {
+      if (!removal_area.is_in_distance_) {
         continue;
       }
 
-      // todo (takagi): height check
-      if (boost::geometry::within(PointXY(map2ob_x, map2ob_y), removal_area.polygon)) {
+      if (
+        removal_area.target_labels_.count(
+          object_classification_map_.at(object.classification[0].label)) == 0 &&
+        removal_area.target_labels_.count("all") == 0 &&
+        removal_area.target_labels_.count("all_objects") == 0) {
+        continue;
+      }
+
+      const auto & pos = object.kinematics.initial_pose_with_covariance.pose.position;
+      if (boost::geometry::within(PointXY(pos.x, pos.y), removal_area.polygon_)) {
+        // todo (takagi): height check
         within = true;
+        break;
       }
     }
-    if (!within) {  // 各オブジェクトが領域に属しているか(within==trueか)
-      out_objects.objects.emplace_back(object);  // 属していないなら消去しない(outputする)
+    if (!within) {
+      out_objects.objects.emplace_back(object);
     }
   }
 
   objects_ptr_ = boost::none;
-
   return true;
 }
 
@@ -607,11 +451,7 @@ void MapAreaFilterComponent::filter(
 {
   std::scoped_lock lock(mutex_);
 
-  if (!csv_loaded_) {
-    RCLCPP_WARN_STREAM_THROTTLE(
-      this->get_logger(), *this->get_clock(), 1, "Areas CSV Not yet loaded");
-  }
-  if (!do_filter_ || area_polygons_.empty()) {
+  if (!do_filter_ || removal_areas_.empty()) {
     RCLCPP_WARN_STREAM_THROTTLE(
       this->get_logger(), *this->get_clock(), 1, "Not filtering: Check empty areas or Parameters.");
     output = *input;

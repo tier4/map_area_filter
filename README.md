@@ -62,7 +62,7 @@ Note that objects will not be removed if their type is not registered as a Key o
 
 **Supported Object Types (Key)**
 * `all` (Targets all perception objects and point clouds)
-* `all_object` (Targets all perception objects)
+* `all_objects` (Targets all perception objects)
 * `pointcloud` (Targets point cloud data)
 * `unknown`, `car`, `truck`, `bus`, `trailer`, `motorcycle`, `bicycle`, `pedestrian` (Targets the corresponding detection classes)
 

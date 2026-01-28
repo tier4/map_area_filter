@@ -16,17 +16,16 @@
 
 #pragma once
 #include "basefilter.hpp"
-#include "csv.hpp"
-#include <autoware/route_handler/route_handler.hpp>
 
+#include <autoware/route_handler/route_handler.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <pcl/common/impl/common.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
-#include <nav_msgs/msg/odometry.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -46,25 +45,23 @@
 
 namespace map_area_filter
 {
-enum class AreaType {
-  DELETE_ALL,     // Delete static and dynamic cloud
-  DELETE_OBJECT,  // Delete predicted object bbox
-};
-
 typedef boost::geometry::model::d2::point_xy<float> PointXY;
 typedef boost::geometry::model::polygon<PointXY> Polygon2D;
 
 using autoware_perception_msgs::msg::PredictedObjects;
 
-struct RemovalArea
+class RemovalArea
 {
-  lanelet::Id id;
-  std::unordered_set<std::string> target_labels;
-  lanelet::BasicPolygon2d polygon;
-  std::optional<double> min_removal_height{std::nullopt};
-  std::optional<double> max_removal_height{std::nullopt};
-};
+public:
+  lanelet::Id id_;
+  std::unordered_set<std::string> target_labels_;
+  lanelet::BasicPolygon2d polygon_;
+  std::optional<double> min_removal_height_{std::nullopt};
+  std::optional<double> max_removal_height_{std::nullopt};
+  bool is_in_distance_{false};
 
+  void update_is_in_distance(geometry_msgs::msg::Point pos, double distance);
+};
 
 class MapAreaFilterComponent : public map_area_filter::Filter
 {
@@ -75,10 +72,8 @@ protected:
   void subscribe() override;
   void unsubscribe() override;
 
-  bool do_filter_, csv_loaded_ = true;
+  bool do_filter_ = true;
   int filter_type;
-  bool csv_invalid =
-    false;  // csv fileが開けない、pathが違うなどの問題が存在するか(正しくないならfilterしない
 
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
@@ -101,11 +96,6 @@ protected:
   std::string map_frame_;
   std::string base_link_frame_;
 
-  std::vector<AreaType> area_types_;
-  std::vector<Polygon2D> area_polygons_;
-  std::vector<uint8_t> area_labels;
-  std::deque<std::size_t> original_csv_order_;
-
   std::vector<RemovalArea> removal_areas_;
 
   visualization_msgs::msg::MarkerArray area_markers_msg_;
@@ -119,18 +109,6 @@ protected:
 
   double min_guaranteed_area_distance_;
   double marker_font_scale_;
-
-  /***
-   * Returns true if valid polygons were found in the CSV
-   * @param file_name CSV to parse and load polygons
-   * @return true if valid polygons were found in the CSV
-   */
-  void csv_row_func(const csv::CSVRow & row, std::deque<csv::CSVRow> & rows, std::size_t row_i);
-  void row_to_rowpoints(
-    const csv::CSVRow & row, std::vector<PointXY> & row_points, AreaType & areatype,
-    bool & correct_elem);
-
-  bool load_areas_from_csv(const std::string & file_name);
 
   void filter_points_by_area(
     const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
