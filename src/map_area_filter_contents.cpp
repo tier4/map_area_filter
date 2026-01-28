@@ -16,51 +16,8 @@
 
 #include "map_area_filter_contents.hpp"
 
-#include "autoware_lanelet2_extension/utility/message_conversion.hpp"
-#include "autoware_lanelet2_extension/utility/query.hpp"
-#include "autoware_lanelet2_extension/utility/utilities.hpp"
-
-#include <autoware_utils_geometry/boost_polygon_utils.hpp>
-
-#include <boost/format.hpp>
-#include <boost/geometry/algorithms/append.hpp>
-#include <boost/geometry/algorithms/assign.hpp>
-#include <boost/geometry/algorithms/correct.hpp>
-#include <boost/geometry/algorithms/intersects.hpp>
 #include <boost/geometry/algorithms/within.hpp>
-
-#include <lanelet2_core/geometry/LineString.h>
 #include <lanelet2_core/geometry/Polygon.h>
-
-#define debug(var)             \
-  do {                         \
-    std::cerr << #var << ": "; \
-    view(var);                 \
-  } while (0)
-template <typename T>
-void view(T e)
-{
-  std::cerr << e << std::endl;
-}
-template <typename T>
-void view(const std::vector<T> & v)
-{
-  for (const auto & e : v) {
-    std::cerr << e << " ";
-  }
-  std::cerr << std::endl;
-}
-template <typename T>
-void view(const std::vector<std::vector<T> > & vv)
-{
-  for (const auto & v : vv) {
-    view(v);
-  }
-}
-#define line()                          \
-  {                                     \
-    std::cerr << __LINE__ << std::endl; \
-  }
 
 namespace
 {
