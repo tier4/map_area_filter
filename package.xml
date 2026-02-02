@@ -33,6 +33,8 @@
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
   <depend>autoware_universe_utils</depend>
+  <depend>autoware_route_handler</depend>
+  <depend>lanelet2_extension</depend>
 
 
   <test_depend>ament_lint_auto</test_depend>
