@@ -16,6 +16,7 @@
 
 #include "map_area_filter_contents.hpp"
 
+#include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/Polygon.h>
 
 namespace
