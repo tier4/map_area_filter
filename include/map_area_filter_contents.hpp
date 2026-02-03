@@ -47,6 +47,8 @@ typedef boost::geometry::model::d2::point_xy<float> PointXY;
 typedef boost::geometry::model::polygon<PointXY> Polygon2D;
 
 using autoware_perception_msgs::msg::PredictedObjects;
+using PointCloud2 = sensor_msgs::msg::PointCloud2;
+using PointCloud2ConstPtr = sensor_msgs::msg::PointCloud2::ConstSharedPtr;
 
 /** \brief For parameter service callback */
 template <typename T>
@@ -78,63 +80,50 @@ public:
 class MapAreaFilterComponent : public rclcpp::Node
 {
 public:
-  using PointCloud2 = sensor_msgs::msg::PointCloud2;
-  using PointCloud2ConstPtr = sensor_msgs::msg::PointCloud2::ConstSharedPtr;
-
 protected:
-  void filter(const PointCloud2ConstPtr & input, PointCloud2 & output);
-
   bool do_filter_ = true;
   int filter_type;
+
 
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
   autoware::universe_utils::TransformListener transform_listener_{this};
 
-  /** \brief Parameter service callback */
-  rcl_interfaces::msg::SetParametersResult paramCallback(const std::vector<rclcpp::Parameter> & p);
-
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr area_markers_pub_;
   rclcpp::Publisher<PredictedObjects>::SharedPtr filtered_objects_pub_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
+
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr objects_cloud_sub_;
   rclcpp::Subscription<PredictedObjects>::SharedPtr objects_sub_;
   rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr lanelet_map_sub_;
-
-  // private:
-  std::shared_ptr<tf2_ros::Buffer> tf2_;
-  std::shared_ptr<tf2_ros::TransformListener> tf2_listener_;
-
-  std::string map_frame_;
-  std::string base_link_frame_;
-
-  /** \brief The input PointCloud2 subscriber. */
   rclcpp::Subscription<PointCloud2>::SharedPtr sub_input_;
 
-  /** \brief The output PointCloud2 publisher. */
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
+  // tf
+  tf2_ros::Buffer tf_buffer_;
+  tf2_ros::TransformListener tf_listener_;
 
   /** \brief Internal mutex. */
   std::mutex mutex_;
-
-  size_t max_queue_size_ = 3;
-
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
-
-  std::vector<RemovalArea> removal_areas_;
-
-  visualization_msgs::msg::MarkerArray area_markers_msg_;
 
   nav_msgs::msg::Odometry kinematic_state_;
   autoware::route_handler::RouteHandler route_handler_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr objects_cloud_ptr_;
   boost::optional<PredictedObjects::ConstSharedPtr> objects_ptr_;
+  std::vector<RemovalArea> removal_areas_;
 
   rclcpp::TimerBase::SharedPtr timer_;
+  visualization_msgs::msg::MarkerArray area_markers_msg_;
+
+  std::string map_frame_;
+  std::string base_link_frame_;
 
   double min_guaranteed_area_distance_;
   double marker_font_scale_;
+
+  /** \brief Parameter service callback */
+  rcl_interfaces::msg::SetParametersResult paramCallback(const std::vector<rclcpp::Parameter> & p);
+
+  void filter(const PointCloud2ConstPtr & input, PointCloud2 & output);
 
   void filter_points_by_area(
     const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output);

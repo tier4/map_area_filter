@@ -35,10 +35,6 @@ const std::unordered_map<uint8_t, std::string> object_classification_map_ = {
 
 namespace map_area_filter
 {
-
-using std::placeholders::_1;
-using namespace std::chrono_literals;
-
 void RemovalArea::update_is_in_distance(geometry_msgs::msg::Point pos, double distance)
 {
   for (const auto & vertex_point : polygon_) {
@@ -54,35 +50,20 @@ void RemovalArea::update_is_in_distance(geometry_msgs::msg::Point pos, double di
 
 // constructor
 MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & options)
-: Node("MapAreaFilter", options)
+: Node("MapAreaFilter", options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
 {
-  // Set parameters (moved from NodeletLazy onInit)
-  {
-    max_queue_size_ = static_cast<std::size_t>(declare_parameter("max_queue_size", 5));
+  using std::placeholders::_1;
+  using namespace std::chrono_literals;
 
-    RCLCPP_INFO_STREAM(
-      this->get_logger(),
-      "Filter (as Component) successfully created with the following parameters:"
-        << std::endl
-        << " - max_queue_size   : " << max_queue_size_);
-  }
+  const int max_queue_size = 5;
 
-  // Set publisher
-  {
-    pub_output_ = this->create_publisher<PointCloud2>(
-      "output/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_));
-  }
+  pub_output_ = this->create_publisher<PointCloud2>(
+    "output/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size));
 
   std::function<void(const PointCloud2ConstPtr msg)> cb =
-    std::bind(&MapAreaFilterComponent::computePublish, this, std::placeholders::_1);
+    std::bind(&MapAreaFilterComponent::computePublish, this, _1);
   sub_input_ = create_subscription<PointCloud2>(
-    "input/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_), cb);
-
-  // Set tf_listener, tf_buffer.
-  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
-
-  RCLCPP_DEBUG(this->get_logger(), "[Filter Constructor] successfully created.");
+    "input/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size), cb);
 
   pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
   // set initial parameters
@@ -106,9 +87,6 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     std::bind(&MapAreaFilterComponent::lanelet_map_callback, this, _1));
 
   if (filter_type == 1 || filter_type == 3) {
-    objects_cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-      "input/additional_objects_cloud", rclcpp::SensorDataQoS(),
-      std::bind(&MapAreaFilterComponent::objects_cloud_callback, this, _1));
     area_markers_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "pointcloud_filter_area", rclcpp::QoS(1));
   }
@@ -133,8 +111,6 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     std::bind(&MapAreaFilterComponent::paramCallback, this, _1));
 
   rclcpp::Clock::SharedPtr clock = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
-  tf2_.reset(new tf2_ros::Buffer(clock));
-  tf2_listener_.reset(new tf2_ros::TransformListener(*tf2_));
 
   timer_ = this->create_wall_timer(1s, std::bind(&MapAreaFilterComponent::timer_callback, this));
 }
@@ -149,7 +125,6 @@ void MapAreaFilterComponent::computePublish(const PointCloud2ConstPtr & input)
   // Publish a boost shared ptr
   pub_output_->publish(std::move(output));
 }
-
 
 void MapAreaFilterComponent::color_func(double dis, std_msgs::msg::ColorRGBA & color)
 {
@@ -296,13 +271,6 @@ void MapAreaFilterComponent::lanelet_map_callback(
   create_area_marker_msg();
 }
 
-void MapAreaFilterComponent::objects_cloud_callback(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & msg)
-{
-  std::scoped_lock lock(mutex_);
-  objects_cloud_ptr_ = msg;
-}
-
 void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstSharedPtr & msg)
 {
   std::scoped_lock lock(mutex_);
@@ -445,7 +413,7 @@ void MapAreaFilterComponent::filter(const PointCloud2ConstPtr & input, PointClou
 
   // transform cloud to filter to map frame
   sensor_msgs::msg::PointCloud2 map_frame_cloud;
-  if (!transform_pointcloud(*input, *tf2_, map_frame_, map_frame_cloud)) {
+  if (!transform_pointcloud(*input, tf_buffer_, map_frame_, map_frame_cloud)) {
     RCLCPP_ERROR_STREAM_THROTTLE(
       this->get_logger(), *this->get_clock(), 1,
       "Cannot transform cloud to " << map_frame_ << " not filtering.");
@@ -458,7 +426,7 @@ void MapAreaFilterComponent::filter(const PointCloud2ConstPtr & input, PointClou
   // transform known object cloud to map frame
   sensor_msgs::msg::PointCloud2 objects_frame_cloud;
   if (objects_cloud_ptr_ != nullptr) {
-    if (!transform_pointcloud(*objects_cloud_ptr_, *tf2_, map_frame_, objects_frame_cloud)) {
+    if (!transform_pointcloud(*objects_cloud_ptr_, tf_buffer_, map_frame_, objects_frame_cloud)) {
       RCLCPP_ERROR_STREAM_THROTTLE(
         this->get_logger(), *this->get_clock(), 1,
         "Cannot transform objects cloud to " << map_frame_
@@ -482,7 +450,7 @@ void MapAreaFilterComponent::filter(const PointCloud2ConstPtr & input, PointClou
   output.header = input->header;
   output.header.frame_id = map_frame_;
 
-  if (!transform_pointcloud(output, *tf2_, input->header.frame_id, output)) {
+  if (!transform_pointcloud(output, tf_buffer_, input->header.frame_id, output)) {
     RCLCPP_ERROR_STREAM_THROTTLE(
       this->get_logger(), *this->get_clock(), 1,
       "Cannot transform back cloud to " << input->header.frame_id << " not filtering.");
