@@ -185,41 +185,21 @@ protected:
   virtual void filter(
     const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output) = 0;
 
-  /** \brief Lazy transport subscribe routine. */
-  virtual void subscribe();
-
-  /** \brief Lazy transport unsubscribe routine. */
-  virtual void unsubscribe();
-
   /** \brief Call the child filter () method, optionally transform the result, and publish it.
    * \param input the input point cloud dataset.
    * \param indices a pointer to the vector of point indices to use.
    */
   void computePublish(const PointCloud2ConstPtr & input, const IndicesPtr & indices);
 
-  //////////////////////
-  // from PCLNodelet //
-  //////////////////////
 
-  /** \brief Set to true if the indices topic is latched.
-   *
-   * If use_indices_ is true, the ~input and ~indices topics generally must
-   * be synchronised in time. By setting this flag to true, the most recent
-   * value from ~indices can be used instead of requiring a synchronised
-   * message.
-   **/
-  bool latched_indices_ = false;
 
   /** \brief The maximum queue size (default: 3). */
   size_t max_queue_size_ = 3;
 
-  /** \brief True if we use an approximate time synchronizer
-   * versus an exact one (false by default). */
-  bool approximate_sync_ = false;
+
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
-
 
 private:
   /** \brief Parameter service callback result : needed to be hold */

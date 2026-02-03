@@ -111,16 +111,6 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
   timer_ = this->create_wall_timer(1s, std::bind(&MapAreaFilterComponent::timer_callback, this));
 }
 
-void MapAreaFilterComponent::subscribe()
-{
-  Filter::subscribe();
-}
-
-void MapAreaFilterComponent::unsubscribe()
-{
-  Filter::unsubscribe();
-}
-
 void MapAreaFilterComponent::color_func(double dis, std_msgs::msg::ColorRGBA & color)
 {
   if (filter_type == 2) {

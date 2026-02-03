@@ -71,16 +71,11 @@ map_area_filter::Filter::Filter(
     tf_output_frame_ = static_cast<std::string>(declare_parameter("output_frame", ""));
     max_queue_size_ = static_cast<std::size_t>(declare_parameter("max_queue_size", 5));
 
-    // ---[ Optional parameters
-    latched_indices_ = static_cast<bool>(declare_parameter("latched_indices", false));
-    approximate_sync_ = static_cast<bool>(declare_parameter("approximate_sync", false));
 
     RCLCPP_INFO_STREAM(
       this->get_logger(),
       "Filter (as Component) successfully created with the following parameters:"
         << std::endl
-        << " - approximate_sync : " << (approximate_sync_ ? "true" : "false") << std::endl
-        << " - latched_indices  : " << (latched_indices_ ? "true" : "false") << std::endl
         << " - max_queue_size   : " << max_queue_size_);
   }
 
@@ -90,7 +85,10 @@ map_area_filter::Filter::Filter(
       "output/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_));
   }
 
-  subscribe();
+  std::function<void(const PointCloud2ConstPtr msg)> cb =
+    std::bind(&Filter::input_indices_callback, this, std::placeholders::_1, PointIndicesConstPtr());
+  sub_input_ = create_subscription<PointCloud2>(
+    "input/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_), cb);
 
   // Set tf_listener, tf_buffer.
   setupTF();
@@ -105,22 +103,6 @@ void map_area_filter::Filter::setupTF()
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void map_area_filter::Filter::subscribe()
-{
-  // Subscribe in an old fashion to input only (no filters)
-  // CAN'T use auto-type here.
-  std::function<void(const PointCloud2ConstPtr msg)> cb =
-    std::bind(&Filter::input_indices_callback, this, std::placeholders::_1, PointIndicesConstPtr());
-  sub_input_ = create_subscription<PointCloud2>(
-    "input/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_), cb);
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void map_area_filter::Filter::unsubscribe()
-{
-  sub_input_.reset();
-}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void map_area_filter::Filter::computePublish(

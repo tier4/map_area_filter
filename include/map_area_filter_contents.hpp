@@ -67,9 +67,7 @@ protected:
   void filter(
     const PointCloud2ConstPtr & input, [[maybe_unused]] const IndicesPtr & indices,
     PointCloud2 & output);
-  void subscribe() override;
-  void unsubscribe() override;
-
+  
   bool do_filter_ = true;
   int filter_type;
 
