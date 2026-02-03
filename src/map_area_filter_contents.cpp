@@ -392,9 +392,7 @@ bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objec
   return true;
 }
 
-void MapAreaFilterComponent::filter(
-  const PointCloud2ConstPtr & input, [[maybe_unused]] const IndicesPtr & indices,
-  PointCloud2 & output)
+void MapAreaFilterComponent::filter(const PointCloud2ConstPtr & input, PointCloud2 & output)
 {
   std::scoped_lock lock(mutex_);
 

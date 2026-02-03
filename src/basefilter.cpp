@@ -71,7 +71,6 @@ map_area_filter::Filter::Filter(
     tf_output_frame_ = static_cast<std::string>(declare_parameter("output_frame", ""));
     max_queue_size_ = static_cast<std::size_t>(declare_parameter("max_queue_size", 5));
 
-
     RCLCPP_INFO_STREAM(
       this->get_logger(),
       "Filter (as Component) successfully created with the following parameters:"
@@ -86,54 +85,26 @@ map_area_filter::Filter::Filter(
   }
 
   std::function<void(const PointCloud2ConstPtr msg)> cb =
-    std::bind(&Filter::input_indices_callback, this, std::placeholders::_1, PointIndicesConstPtr());
+    std::bind(&Filter::computePublish, this, std::placeholders::_1);
   sub_input_ = create_subscription<PointCloud2>(
     "input/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_), cb);
 
   // Set tf_listener, tf_buffer.
-  setupTF();
+  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   RCLCPP_DEBUG(this->get_logger(), "[Filter Constructor] successfully created.");
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void map_area_filter::Filter::setupTF()
-{
-  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
-}
-
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void map_area_filter::Filter::computePublish(
-  const PointCloud2ConstPtr & input, const IndicesPtr & indices)
+  const PointCloud2ConstPtr & input)
 {
   auto output = std::make_unique<PointCloud2>();
 
   // Call the virtual method in the child
-  filter(input, indices, *output);
-  
-  // Copy timestamp to keep it
-  output->header.stamp = input->header.stamp;
+  filter(input, *output);
 
   // Publish a boost shared ptr
   pub_output_->publish(std::move(output));
-}
-
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-void map_area_filter::Filter::input_indices_callback(
-  const PointCloud2ConstPtr cloud, const PointIndicesConstPtr indices)
-{
-  // Check whether the user has given a different input TF frame
-  tf_input_orig_frame_ = cloud->header.frame_id;
-  PointCloud2ConstPtr cloud_tf;
-  cloud_tf = cloud;
-  // Need setInputCloud () here because we have to extract x/y/z
-  IndicesPtr vindices;
-  if (indices) {
-    vindices.reset(new std::vector<int>(indices->indices));
-  }
-
-  computePublish(cloud_tf, vindices);
 }

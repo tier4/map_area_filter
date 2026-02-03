@@ -182,21 +182,16 @@ protected:
    * \param indices a pointer to the vector of point indices to use.
    * \param output the resultant filtered PointCloud2
    */
-  virtual void filter(
-    const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output) = 0;
+  virtual void filter(const PointCloud2ConstPtr & input, PointCloud2 & output) = 0;
 
   /** \brief Call the child filter () method, optionally transform the result, and publish it.
    * \param input the input point cloud dataset.
    * \param indices a pointer to the vector of point indices to use.
    */
-  void computePublish(const PointCloud2ConstPtr & input, const IndicesPtr & indices);
-
-
+  void computePublish(const PointCloud2ConstPtr & input);
 
   /** \brief The maximum queue size (default: 3). */
   size_t max_queue_size_ = 3;
-
-
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -213,10 +208,6 @@ private:
   std::shared_ptr<ExactTimeSyncPolicy> sync_input_indices_e_;
   std::shared_ptr<ApproximateTimeSyncPolicy> sync_input_indices_a_;
 
-  /** \brief PointCloud2 + Indices data callback. */
-  void input_indices_callback(const PointCloud2ConstPtr cloud, const PointIndicesConstPtr indices);
-
-  void setupTF();
 };
 
 }  // namespace map_area_filter

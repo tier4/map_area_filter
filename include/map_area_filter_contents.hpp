@@ -64,10 +64,8 @@ public:
 class MapAreaFilterComponent : public map_area_filter::Filter
 {
 protected:
-  void filter(
-    const PointCloud2ConstPtr & input, [[maybe_unused]] const IndicesPtr & indices,
-    PointCloud2 & output);
-  
+  void filter(const PointCloud2ConstPtr & input, PointCloud2 & output);
+
   bool do_filter_ = true;
   int filter_type;
 
