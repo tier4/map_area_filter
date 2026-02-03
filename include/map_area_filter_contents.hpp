@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
-#include "basefilter.hpp"
+#ifndef MAP_AREA_FILTER_CONTENTS_HPP_
+#define MAP_AREA_FILTER_CONTENTS_HPP_
 
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
@@ -75,8 +75,12 @@ public:
   void update_is_in_distance(geometry_msgs::msg::Point pos, double distance);
 };
 
-class MapAreaFilterComponent : public map_area_filter::Filter
+class MapAreaFilterComponent : public rclcpp::Node
 {
+public:
+  using PointCloud2 = sensor_msgs::msg::PointCloud2;
+  using PointCloud2ConstPtr = sensor_msgs::msg::PointCloud2::ConstSharedPtr;
+
 protected:
   void filter(const PointCloud2ConstPtr & input, PointCloud2 & output);
 
@@ -103,6 +107,20 @@ protected:
 
   std::string map_frame_;
   std::string base_link_frame_;
+
+  /** \brief The input PointCloud2 subscriber. */
+  rclcpp::Subscription<PointCloud2>::SharedPtr sub_input_;
+
+  /** \brief The output PointCloud2 publisher. */
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
+
+  /** \brief Internal mutex. */
+  std::mutex mutex_;
+
+  size_t max_queue_size_ = 3;
+
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   std::vector<RemovalArea> removal_areas_;
 
@@ -135,9 +153,12 @@ protected:
     const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
     const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output);
 
+  void computePublish(const PointCloud2ConstPtr & input);
+
 public:
-  explicit MapAreaFilterComponent(const rclcpp::NodeOptions & options);
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  MapAreaFilterComponent(const rclcpp::NodeOptions & options);
 };
 
 }  // namespace map_area_filter
+
+#endif  // MAP_AREA_FILTER_CONTENTS_HPP_

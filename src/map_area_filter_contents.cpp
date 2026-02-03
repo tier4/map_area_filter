@@ -54,8 +54,36 @@ void RemovalArea::update_is_in_distance(geometry_msgs::msg::Point pos, double di
 
 // constructor
 MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & options)
-: Filter("MapAreaFilter", options)
+: Node("MapAreaFilter", options)
 {
+  // Set parameters (moved from NodeletLazy onInit)
+  {
+    max_queue_size_ = static_cast<std::size_t>(declare_parameter("max_queue_size", 5));
+
+    RCLCPP_INFO_STREAM(
+      this->get_logger(),
+      "Filter (as Component) successfully created with the following parameters:"
+        << std::endl
+        << " - max_queue_size   : " << max_queue_size_);
+  }
+
+  // Set publisher
+  {
+    pub_output_ = this->create_publisher<PointCloud2>(
+      "output/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_));
+  }
+
+  std::function<void(const PointCloud2ConstPtr msg)> cb =
+    std::bind(&MapAreaFilterComponent::computePublish, this, std::placeholders::_1);
+  sub_input_ = create_subscription<PointCloud2>(
+    "input/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_), cb);
+
+  // Set tf_listener, tf_buffer.
+  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+  RCLCPP_DEBUG(this->get_logger(), "[Filter Constructor] successfully created.");
+
   pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
   // set initial parameters
 
@@ -110,6 +138,18 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
 
   timer_ = this->create_wall_timer(1s, std::bind(&MapAreaFilterComponent::timer_callback, this));
 }
+
+void MapAreaFilterComponent::computePublish(const PointCloud2ConstPtr & input)
+{
+  auto output = std::make_unique<PointCloud2>();
+
+  // Call the virtual method in the child
+  filter(input, *output);
+
+  // Publish a boost shared ptr
+  pub_output_->publish(std::move(output));
+}
+
 
 void MapAreaFilterComponent::color_func(double dis, std_msgs::msg::ColorRGBA & color)
 {
