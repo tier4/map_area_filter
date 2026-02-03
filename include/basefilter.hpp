@@ -200,17 +200,7 @@ protected:
   //////////////////////
   // from PCLNodelet //
   //////////////////////
-  /** \brief Set to true if point indices are used.
-   *
-   * When receiving a point cloud, if use_indices_ is false, the entire
-   * point cloud is processed for the given operation. If use_indices_ is
-   * true, then the ~indices topic is read to get the vector of point
-   * indices specifying the subset of the point cloud that will be used for
-   * the operation. In the case where use_indices_ is true, the ~input and
-   * ~indices topics must be synchronised in time, either exact or within a
-   * specified jitter. See also @ref latched_indices_ and approximate_sync.
-   **/
-  bool use_indices_ = false;
+
   /** \brief Set to true if the indices topic is latched.
    *
    * If use_indices_ is true, the ~input and ~indices topics generally must
@@ -230,32 +220,6 @@ protected:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
-  inline bool isValid(
-    const PointCloud2ConstPtr & cloud, const std::string & /*topic_name*/ = "input")
-  {
-    if (cloud->width * cloud->height * cloud->point_step != cloud->data.size()) {
-      RCLCPP_WARN(
-        this->get_logger(),
-        "Invalid PointCloud (data = %zu, width = %d, height = %d, step = %d) with stamp %f, "
-        "and frame %s received!",
-        cloud->data.size(), cloud->width, cloud->height, cloud->point_step,
-        rclcpp::Time(cloud->header.stamp).seconds(), cloud->header.frame_id.c_str());
-      return false;
-    }
-    return true;
-  }
-
-  inline bool isValid(
-    const PointIndicesConstPtr & /*indices*/, const std::string & /*topic_name*/ = "indices")
-  {
-    return true;
-  }
-
-  inline bool isValid(
-    const ModelCoefficientsConstPtr & /*model*/, const std::string & /*topic_name*/ = "model")
-  {
-    return true;
-  }
 
 private:
   /** \brief Parameter service callback result : needed to be hold */
