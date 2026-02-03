@@ -63,12 +63,10 @@
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 map_area_filter::Filter::Filter(
   const std::string & filter_name, const rclcpp::NodeOptions & options)
-: Node(filter_name, options), filter_field_name_(filter_name)
+: Node(filter_name, options)
 {
   // Set parameters (moved from NodeletLazy onInit)
   {
-    tf_input_frame_ = static_cast<std::string>(declare_parameter("input_frame", ""));
-    tf_output_frame_ = static_cast<std::string>(declare_parameter("output_frame", ""));
     max_queue_size_ = static_cast<std::size_t>(declare_parameter("max_queue_size", 5));
 
     RCLCPP_INFO_STREAM(
@@ -97,8 +95,7 @@ map_area_filter::Filter::Filter(
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void map_area_filter::Filter::computePublish(
-  const PointCloud2ConstPtr & input)
+void map_area_filter::Filter::computePublish(const PointCloud2ConstPtr & input)
 {
   auto output = std::make_unique<PointCloud2>();
 

@@ -83,21 +83,6 @@
 
 namespace map_area_filter
 {
-namespace sync_policies = message_filters::sync_policies;
-
-/** \brief For parameter service callback */
-template <typename T>
-bool get_param(const std::vector<rclcpp::Parameter> & p, const std::string & name, T & value)
-{
-  auto it = std::find_if(p.cbegin(), p.cend(), [&name](const rclcpp::Parameter & parameter) {
-    return parameter.get_name() == name;
-  });
-  if (it != p.cend()) {
-    value = it->template get_value<T>();
-    return true;
-  }
-  return false;
-}
 
 /** \brief @b Filter represents the base filter class. Some generic 3D operations that are
  * applicable to all filters are defined here as static methods. \author Radu Bogdan Rusu
@@ -112,22 +97,6 @@ public:
   using PointCloudPtr = PointCloud::Ptr;
   using PointCloudConstPtr = PointCloud::ConstPtr;
 
-  using PointIndices = pcl_msgs::msg::PointIndices;
-  using PointIndicesPtr = PointIndices::SharedPtr;
-  using PointIndicesConstPtr = PointIndices::ConstSharedPtr;
-
-  using ModelCoefficients = pcl_msgs::msg::ModelCoefficients;
-  using ModelCoefficientsPtr = ModelCoefficients::SharedPtr;
-  using ModelCoefficientsConstPtr = ModelCoefficients::ConstSharedPtr;
-
-  using IndicesPtr = pcl::IndicesPtr;
-  using IndicesConstPtr = pcl::IndicesConstPtr;
-
-  using ExactTimeSyncPolicy =
-    message_filters::Synchronizer<sync_policies::ExactTime<PointCloud2, PointIndices>>;
-  using ApproximateTimeSyncPolicy =
-    message_filters::Synchronizer<sync_policies::ApproximateTime<PointCloud2, PointIndices>>;
-
   PCL_MAKE_ALIGNED_OPERATOR_NEW
   explicit Filter(
     const std::string & filter_name = "map_area_filter_base_filter",
@@ -140,42 +109,10 @@ protected:
   /** \brief The output PointCloud2 publisher. */
   rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
 
-  /** \brief The message filter subscriber for PointCloud2. */
-  message_filters::Subscriber<PointCloud2> sub_input_filter_;
-
-  /** \brief The message filter subscriber for PointIndices. */
-  message_filters::Subscriber<PointIndices> sub_indices_filter_;
-
-  /** \brief The desired user filter field name. */
-  std::string filter_field_name_;
-
-  /** \brief The minimum allowed filter value a point will be considered from. */
-  double filter_limit_min_;
-
-  /** \brief The maximum allowed filter value a point will be considered from. */
-  double filter_limit_max_;
-
-  /** \brief Set to true if we want to return the data outside (\a filter_limit_min_;\a
-   * filter_limit_max_). Default: false. */
-  bool filter_limit_negative_;
-
-  /** \brief The input TF frame the data should be transformed into,
-   * if input.header.frame_id is different. */
-  std::string tf_input_frame_;
-
-  /** \brief The original data input TF frame. */
-  std::string tf_input_orig_frame_;
-
-  /** \brief The output TF frame the data should be transformed into,
-   * if input.header.frame_id is different. */
-  std::string tf_output_frame_;
-
   /** \brief Internal mutex. */
   std::mutex mutex_;
 
   /** \brief processing time publisher. **/
-  std::unique_ptr<autoware::universe_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
-  std::unique_ptr<autoware::universe_utils::DebugPublisher> debug_publisher_;
 
   /** \brief Virtual abstract filter method. To be implemented by every child.
    * \param input the input point cloud dataset.
@@ -195,19 +132,6 @@ protected:
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
-
-private:
-  /** \brief Parameter service callback result : needed to be hold */
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_filter_;
-
-  /** \brief Parameter service callback */
-  rcl_interfaces::msg::SetParametersResult filterParamCallback(
-    const std::vector<rclcpp::Parameter> & p);
-
-  /** \brief Synchronized input, and indices.*/
-  std::shared_ptr<ExactTimeSyncPolicy> sync_input_indices_e_;
-  std::shared_ptr<ApproximateTimeSyncPolicy> sync_input_indices_a_;
-
 };
 
 }  // namespace map_area_filter

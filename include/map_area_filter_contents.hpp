@@ -48,6 +48,20 @@ typedef boost::geometry::model::polygon<PointXY> Polygon2D;
 
 using autoware_perception_msgs::msg::PredictedObjects;
 
+/** \brief For parameter service callback */
+template <typename T>
+bool get_param(const std::vector<rclcpp::Parameter> & p, const std::string & name, T & value)
+{
+  auto it = std::find_if(p.cbegin(), p.cend(), [&name](const rclcpp::Parameter & parameter) {
+    return parameter.get_name() == name;
+  });
+  if (it != p.cend()) {
+    value = it->template get_value<T>();
+    return true;
+  }
+  return false;
+}
+
 class RemovalArea
 {
 public:
