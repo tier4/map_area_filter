@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef MAP_AREA_FILTER_CONTENTS_HPP_
-#define MAP_AREA_FILTER_CONTENTS_HPP_
+#pragma once
 
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
@@ -79,7 +78,6 @@ public:
 
 class MapAreaFilterComponent : public rclcpp::Node
 {
-public:
 protected:
   bool do_filter_ = true;
   int filter_type;
@@ -148,5 +146,3 @@ public:
 };
 
 }  // namespace map_area_filter
-
-#endif  // MAP_AREA_FILTER_CONTENTS_HPP_
