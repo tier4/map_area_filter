@@ -84,7 +84,6 @@ protected:
   bool do_filter_ = true;
   int filter_type;
 
-
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
   autoware::universe_utils::TransformListener transform_listener_{this};
