@@ -44,6 +44,8 @@ namespace map_area_filter
 {
 typedef boost::geometry::model::d2::point_xy<float> PointXY;
 typedef boost::geometry::model::polygon<PointXY> Polygon2D;
+typedef boost::geometry::model::box<PointXY> Box2D;
+
 
 using autoware_perception_msgs::msg::PredictedObjects;
 using PointCloud2 = sensor_msgs::msg::PointCloud2;
@@ -69,11 +71,12 @@ public:
   lanelet::Id id_;
   std::unordered_set<std::string> target_labels_;
   lanelet::BasicPolygon2d polygon_;
+  Box2D envelope_box_;
+  double centroid_height_;
   std::optional<double> min_removal_height_{std::nullopt};
   std::optional<double> max_removal_height_{std::nullopt};
-  bool is_in_distance_{false};
 
-  void update_is_in_distance(geometry_msgs::msg::Point pos, double distance);
+  bool is_in_distance(const geometry_msgs::msg::Point pos, const double distance) const;
 };
 
 class MapAreaFilterComponent : public rclcpp::Node

@@ -35,17 +35,16 @@ const std::unordered_map<uint8_t, std::string> object_classification_map_ = {
 
 namespace map_area_filter
 {
-void RemovalArea::update_is_in_distance(geometry_msgs::msg::Point pos, double distance)
+bool RemovalArea::is_in_distance(const geometry_msgs::msg::Point pos, const double distance) const
 {
   for (const auto & vertex_point : polygon_) {
     const double dist_to_vertex = std::hypot(vertex_point.x() - pos.x, vertex_point.y() - pos.y);
     if (dist_to_vertex < distance) {
-      is_in_distance_ = true;
-      return;
+      return true;
     }
   }
   const double dist_to_polygon = boost::geometry::distance(polygon_, PointXY(pos.x, pos.y));
-  is_in_distance_ = (dist_to_polygon < distance);
+  return (dist_to_polygon < distance);
 };
 
 // constructor
@@ -227,11 +226,25 @@ void MapAreaFilterComponent::lanelet_map_callback(
     if (type_val != "map_area_filter") {
       continue;
     }
+    if (polygon_layer_elemet.empty()) {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "Found map_area_filter polygon id: %ld but it has no vertices, skipping.",
+        polygon_layer_elemet.id());
+      continue;
+    }
 
     RemovalArea removal_area;
     removal_area.id_ = polygon_layer_elemet.id();
     removal_area.polygon_ = lanelet::utils::to2D(polygon_layer_elemet).basicPolygon();
     boost::geometry::correct(removal_area.polygon_);
+
+    removal_area.envelope_box_ = boost::geometry::return_envelope<Box2D>(removal_area.polygon_);
+
+    double sum_z = std::accumulate(
+      polygon_layer_elemet.begin(), polygon_layer_elemet.end(), 0.0,
+      [](double sum, const auto & point) { return sum + point.z(); });
+    removal_area.centroid_height_ = sum_z / static_cast<double>(polygon_layer_elemet.size());
 
     for (const auto & attribute : polygon_layer_elemet.attributes()) {
       const std::string key = attribute.first;
@@ -312,28 +325,42 @@ void MapAreaFilterComponent::filter_points_by_area(
   const double attention_length =
     std::pow(kinematic_state_.twist.twist.linear.x, 2) / (2.0 * a) + min_guaranteed_area_distance_;
 
-  for (auto & removal_area : removal_areas_) {
-    removal_area.update_is_in_distance(kinematic_state_.pose.pose.position, attention_length);
-  }
-
   const auto point_size = input->points.size();  // subscribeされた点群のtopic
   std::vector<bool> within(point_size, false);
+
+  std::vector<RemovalArea> active_removal_areas;
+  for (const auto & removal_area : removal_areas_) {
+    if (!removal_area.is_in_distance(kinematic_state_.pose.pose.position, attention_length)) {
+      continue;
+    }
+
+    if (
+      removal_area.target_labels_.count("pointcloud") == 0 &&
+      removal_area.target_labels_.count("all") == 0) {
+      continue;
+    }
+    active_removal_areas.push_back(removal_area);
+  }
+
 #pragma omp parallel for num_threads(1)
   for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
     const auto & point = input->points[point_i];
-    for (const auto & removal_area : removal_areas_) {
-      if (!removal_area.is_in_distance_) {
-        continue;
+    for (const auto & removal_area : active_removal_areas) {
+      const auto & th_min = removal_area.min_removal_height_;
+      const auto & th_max = removal_area.max_removal_height_;
+      const double point_height = point.z - removal_area.centroid_height_;
+      if (th_min.has_value() || th_max.has_value()) {
+        const bool hit_min = th_min.has_value() && (point_height > th_min.value());
+        const bool hit_max = th_max.has_value() && (point_height < th_max.value());
+        if (!hit_min && !hit_max) {
+          continue;
+        }
       }
 
+      const auto point_xy = PointXY(point.x, point.y);
       if (
-        removal_area.target_labels_.count("pointcloud") == 0 &&
-        removal_area.target_labels_.count("all") == 0) {
-        continue;
-      }
-
-      if (boost::geometry::within(PointXY(point.x, point.y), removal_area.polygon_)) {
-        // todo (takagi): height check
+        boost::geometry::within(point_xy, removal_area.envelope_box_) &&
+        boost::geometry::within(point_xy, removal_area.polygon_)) {
         within[point_i] = true;
         break;
       }
@@ -363,19 +390,16 @@ bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objec
   constexpr double a = 1.0;  // m/s^2
   const double attention_length =
     std::pow(kinematic_state_.twist.twist.linear.x, 2) / (2.0 * a) + min_guaranteed_area_distance_;
-
-  for (auto & removal_area : removal_areas_) {
-    removal_area.update_is_in_distance(kinematic_state_.pose.pose.position, attention_length);
+  std::vector<RemovalArea> active_removal_areas;
+  for (const auto & removal_area : removal_areas_) {
+    if (removal_area.is_in_distance(kinematic_state_.pose.pose.position, attention_length)) {
+      active_removal_areas.push_back(removal_area);
+    }
   }
 
   for (const auto & object : in_objects.objects) {
     bool within = false;
-
-    for (const auto & removal_area : removal_areas_) {
-      if (!removal_area.is_in_distance_) {
-        continue;
-      }
-
+    for (const auto & removal_area : active_removal_areas) {
       if (
         removal_area.target_labels_.count(
           object_classification_map_.at(object.classification[0].label)) == 0 &&
@@ -385,8 +409,24 @@ bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objec
       }
 
       const auto & pos = object.kinematics.initial_pose_with_covariance.pose.position;
-      if (boost::geometry::within(PointXY(pos.x, pos.y), removal_area.polygon_)) {
-        // todo (takagi): height check
+      const auto & th_min = removal_area.min_removal_height_;
+      const auto & th_max = removal_area.max_removal_height_;
+      const double lower_height =
+        pos.z - object.shape.dimensions.z * 0.5 - removal_area.centroid_height_;
+      const double upper_height =
+        pos.z + object.shape.dimensions.z * 0.5 - removal_area.centroid_height_;
+      if (th_min.has_value() || th_max.has_value()) {
+        const bool hit_min = th_min.has_value() && (lower_height > th_min.value());
+        const bool hit_max = th_max.has_value() && (upper_height < th_max.value());
+        if (!hit_min && !hit_max) {
+          continue;
+        }
+      }
+
+      const auto obj_centeroid_xy = PointXY(pos.x, pos.y);
+      if (
+        boost::geometry::within(obj_centeroid_xy, removal_area.envelope_box_) &&
+        boost::geometry::within(obj_centeroid_xy, removal_area.polygon_)) {
         within = true;
         break;
       }
