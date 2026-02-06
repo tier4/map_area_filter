@@ -5,6 +5,11 @@ Map area filter is devided into two filtering types, Pointcloud filter and Objec
 This module erases all point clouds contained within the specified area.
 ### Object filter
 This module erases all objects contained within the specified area. It is also possible to specify the type of object and erase only that object.
+
+### Height-based filtering (Optional)
+* If tags are not set: No height checks are performed, i.e., only the horizontal checks are performed.
+* If height-related tags are set: Objects are removed only if they are located in the region above min_removal_height **OR** in the region below max_removal_height.
+
 ## Usage
 ### Setting filter type (WIP)
 Please look at `map_area_filter.lauch.xml`. By default, both Pointcloud filter and Object filter nodes are activated. 
@@ -37,6 +42,8 @@ Note that objects will not be removed if their type is not registered as a Key o
 
 #### Height-based filtering (Optional Tags)
 You can specify a height range to restrict the removal area.
+This feature operates based on the centroid height of the Lanelet polygon. Therefore, please ensure that appropriate elevation values are set for the polygon's vertices. Generally, it is recommended to align the height with the roadway (not the sidewalk).
+Unless specific tags for the height filter function are configured, the height values of the polygon do not affect functionality.
 
 | Key | Value (Ex.) | Description |
 | :--- | :--- | :--- |
