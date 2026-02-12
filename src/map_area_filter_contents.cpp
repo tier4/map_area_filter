@@ -423,24 +423,6 @@ void MapAreaFilterComponent::filter(const PointCloud2ConstPtr & input, PointClou
   pcl::PointCloud<pcl::PointXYZ>::Ptr map_frame_cloud_pcl(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::fromROSMsg(map_frame_cloud, *map_frame_cloud_pcl);
 
-  // transform known object cloud to map frame
-  sensor_msgs::msg::PointCloud2 objects_frame_cloud;
-  if (objects_cloud_ptr_ != nullptr) {
-    if (!transform_pointcloud(*objects_cloud_ptr_, tf_buffer_, map_frame_, objects_frame_cloud)) {
-      RCLCPP_ERROR_STREAM_THROTTLE(
-        this->get_logger(), *this->get_clock(), 1,
-        "Cannot transform objects cloud to " << map_frame_
-                                             << " not filtering. Not including object cloud");
-    }
-  }
-
-  pcl::PointCloud<pcl::PointXYZ>::Ptr objects_cloud_pcl(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::fromROSMsg(objects_frame_cloud, *objects_cloud_pcl);
-
-  // if known object cloud contains points add to the filtered cloud
-  // const std::size_t border = map_frame_cloud_pcl->size();
-  if (!objects_cloud_pcl->points.empty()) *map_frame_cloud_pcl += *objects_cloud_pcl;
-
   // create filtered cloud container
   pcl::PointCloud<pcl::PointXYZ>::Ptr map_frame_cloud_pcl_filtered(
     new pcl::PointCloud<pcl::PointXYZ>);

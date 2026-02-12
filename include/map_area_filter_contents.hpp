@@ -104,7 +104,6 @@ protected:
 
   nav_msgs::msg::Odometry kinematic_state_;
   autoware::route_handler::RouteHandler route_handler_;
-  sensor_msgs::msg::PointCloud2::ConstSharedPtr objects_cloud_ptr_;
   boost::optional<PredictedObjects::ConstSharedPtr> objects_ptr_;
   std::vector<RemovalArea> removal_areas_;
 
@@ -129,7 +128,6 @@ protected:
   void timer_callback();
   void odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & odom_msg);
   void lanelet_map_callback(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr & msg);
-  void objects_cloud_callback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud_msg);
   void objects_callback(const PredictedObjects::ConstSharedPtr & cloud_msg);
 
   void color_func(double dis, std_msgs::msg::ColorRGBA & color);
