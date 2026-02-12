@@ -72,7 +72,6 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     static_cast<std::string>(this->declare_parameter("base_link_frame", "base_link"));
   min_guaranteed_area_distance_ =
     static_cast<double>(this->declare_parameter("min_guaranteed_area_distance", 100));
-  marker_font_scale_ = static_cast<double>(this->declare_parameter("marker_font_scale", 1.0));
   // 1: pointcloud_filter 2: object_filter
   filter_type = static_cast<double>(this->declare_parameter("filter_type", 1));
   // todo (takagi): cleanup filter_type usage (combine with do_filter_,
@@ -85,18 +84,12 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     "input/vector_map", rclcpp::QoS(10).transient_local(),
     std::bind(&MapAreaFilterComponent::lanelet_map_callback, this, _1));
 
-  if (filter_type == 1 || filter_type == 3) {
-    area_markers_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
-      "pointcloud_filter_area", rclcpp::QoS(1));
-  }
   if (filter_type == 2 || filter_type == 3) {
     objects_sub_ = this->create_subscription<PredictedObjects>(
       "input/objects", rclcpp::QoS(10),
       std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
     filtered_objects_pub_ =
       this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
-    area_markers_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
-      "objects_filter_area", rclcpp::QoS(1));
   }
   if (filter_type != 1 && filter_type != 2 && filter_type != 3) {
     RCLCPP_ERROR_STREAM(
@@ -110,8 +103,6 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     std::bind(&MapAreaFilterComponent::paramCallback, this, _1));
 
   rclcpp::Clock::SharedPtr clock = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
-
-  timer_ = this->create_wall_timer(1s, std::bind(&MapAreaFilterComponent::timer_callback, this));
 }
 
 void MapAreaFilterComponent::computePublish(const PointCloud2ConstPtr & input)
@@ -123,81 +114,6 @@ void MapAreaFilterComponent::computePublish(const PointCloud2ConstPtr & input)
 
   // Publish a boost shared ptr
   pub_output_->publish(std::move(output));
-}
-
-void MapAreaFilterComponent::color_func(double dis, std_msgs::msg::ColorRGBA & color)
-{
-  if (filter_type == 2) {
-    color.r = 0. + dis;
-    color.g = 0. + dis;
-    color.b = 1.;
-    color.a = 0.5;
-  } else if (filter_type == 1) {
-    color.r = 1.;
-    color.g = 0. + dis;
-    color.b = 0. + dis;
-    color.a = 0.5;
-  } else if (filter_type == 3) {
-    color.r = 1.;
-    color.g = 0. + dis;
-    color.b = 1.;
-    color.a = 0.5;
-  }
-}
-
-void MapAreaFilterComponent::create_area_marker_msg()
-{
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_real_distribution<double> dist(0.0, 0.5);
-
-  area_markers_msg_.markers.clear();
-
-  for (size_t i = 0; i < removal_areas_.size(); i++) {
-    visualization_msgs::msg::Marker area;
-    area.ns = "polygon";
-    area.header.frame_id = map_frame_;
-    area.id = i;
-    area.type = visualization_msgs::msg::Marker::LINE_STRIP;
-    area.action = visualization_msgs::msg::Marker::MODIFY;
-
-    std_msgs::msg::ColorRGBA color;
-    color_func(dist(gen), color);
-
-    area.color = color;
-    area.scale.x = 0.1;
-    area.scale.y = 0.1;
-    area.scale.z = 0.1;
-
-    for (const auto & vertex : removal_areas_[i].polygon_) {
-      geometry_msgs::msg::Point point;
-      point.x = vertex.x();
-      point.y = vertex.y();
-      area.points.emplace_back(point);
-    }
-    area.points.emplace_back(area.points.front());
-    area_markers_msg_.markers.emplace_back(area);
-
-    visualization_msgs::msg::Marker text;
-    text.header.frame_id = map_frame_;
-    text.ns = "id";
-    text.id = removal_areas_.size() + i;
-    text.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-    text.action = visualization_msgs::msg::Marker::ADD;
-
-    text.pose.position.x = static_cast<double>(area.points[0].x);
-    text.pose.position.y = static_cast<double>(area.points[0].y);
-    text.pose.position.z = 0.0;
-    text.scale.z = marker_font_scale_;
-    text.text = "map_area_filter_removal_area";
-    text.color = color;
-    area_markers_msg_.markers.emplace_back(text);
-  }
-}
-
-void MapAreaFilterComponent::timer_callback()
-{
-  area_markers_pub_->publish(area_markers_msg_);
 }
 
 void MapAreaFilterComponent::odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & msg)
@@ -281,7 +197,6 @@ void MapAreaFilterComponent::lanelet_map_callback(
   }
 
   RCLCPP_INFO(this->get_logger(), "%lu removal areas are registered", removal_areas_.size());
-  create_area_marker_msg();
 }
 
 void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstSharedPtr & msg)

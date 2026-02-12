@@ -26,7 +26,6 @@
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <boost/assign/std/vector.hpp>
 #include <boost/geometry.hpp>
@@ -89,7 +88,6 @@ protected:
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
   autoware::universe_utils::TransformListener transform_listener_{this};
 
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr area_markers_pub_;
   rclcpp::Publisher<PredictedObjects>::SharedPtr filtered_objects_pub_;
   rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
 
@@ -110,14 +108,10 @@ protected:
   boost::optional<PredictedObjects::ConstSharedPtr> objects_ptr_;
   std::vector<RemovalArea> removal_areas_;
 
-  rclcpp::TimerBase::SharedPtr timer_;
-  visualization_msgs::msg::MarkerArray area_markers_msg_;
-
   std::string map_frame_;
   std::string base_link_frame_;
 
   double min_guaranteed_area_distance_;
-  double marker_font_scale_;
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult paramCallback(const std::vector<rclcpp::Parameter> & p);
@@ -132,9 +126,6 @@ protected:
   void odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & odom_msg);
   void lanelet_map_callback(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr & msg);
   void objects_callback(const PredictedObjects::ConstSharedPtr & cloud_msg);
-
-  void color_func(double dis, std_msgs::msg::ColorRGBA & color);
-  void create_area_marker_msg();
 
   static bool transform_pointcloud(
     const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
