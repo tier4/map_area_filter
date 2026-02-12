@@ -54,40 +54,22 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
   using std::placeholders::_1;
   using namespace std::chrono_literals;
 
-  const int max_queue_size = 5;
-
-  pub_output_ = this->create_publisher<PointCloud2>(
-    "output/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size));
-
-  std::function<void(const PointCloud2ConstPtr msg)> cb =
-    std::bind(&MapAreaFilterComponent::computePublish, this, _1);
-  sub_input_ = create_subscription<PointCloud2>(
-    "input/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size), cb);
-
   pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
 
   // set initial parameters
-  map_frame_ = static_cast<std::string>(this->declare_parameter("map_frame", "map"));
-  base_link_frame_ =
-    static_cast<std::string>(this->declare_parameter("base_link_frame", "base_link"));
-  min_guaranteed_area_distance_ =
-    static_cast<double>(this->declare_parameter("min_guaranteed_area_distance", 100));
   enable_object_filtering_ =
     static_cast<bool>(this->declare_parameter("enable_object_filtering", false));
   enable_pointcloud_filtering_ =
     static_cast<bool>(this->declare_parameter("enable_pointcloud_filtering", false));
+  min_guaranteed_area_distance_ =
+    static_cast<double>(this->declare_parameter("min_guaranteed_area_distance", 100));
+  map_frame_ = static_cast<std::string>(this->declare_parameter("map_frame", "map"));
+  base_link_frame_ =
+    static_cast<std::string>(this->declare_parameter("base_link_frame", "base_link"));
 
-  odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-    "input/odometry", rclcpp::QoS(1),
-    std::bind(&MapAreaFilterComponent::odometry_callback, this, _1));
-  lanelet_map_sub_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
-    "input/vector_map", rclcpp::QoS(10).transient_local(),
-    std::bind(&MapAreaFilterComponent::lanelet_map_callback, this, _1));
-  objects_sub_ = this->create_subscription<PredictedObjects>(
-    "input/objects", rclcpp::QoS(10),
-    std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
-  filtered_objects_pub_ =
-    this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
+  set_param_res_ = this->add_on_set_parameters_callback(
+    std::bind(&MapAreaFilterComponent::paramCallback, this, _1));
+
   if (!enable_object_filtering_ && !enable_pointcloud_filtering_) {
     RCLCPP_WARN_STREAM(
       this->get_logger(),
@@ -95,10 +77,26 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
       "not filter anything. Disabling the node is recommended.");
   }
 
-  set_param_res_ = this->add_on_set_parameters_callback(
-    std::bind(&MapAreaFilterComponent::paramCallback, this, _1));
+  const int max_queue_size = 5;
 
-  rclcpp::Clock::SharedPtr clock = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
+  filtered_objects_pub_ =
+    this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
+  pub_output_ = this->create_publisher<PointCloud2>(
+    "output/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size));
+
+  lanelet_map_sub_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
+    "input/vector_map", rclcpp::QoS(10).transient_local(),
+    std::bind(&MapAreaFilterComponent::lanelet_map_callback, this, _1));
+  odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+    "input/odometry", rclcpp::QoS(1),
+    std::bind(&MapAreaFilterComponent::odometry_callback, this, _1));
+  objects_sub_ = this->create_subscription<PredictedObjects>(
+    "input/objects", rclcpp::QoS(10),
+    std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
+  std::function<void(const PointCloud2ConstPtr msg)> cb =
+    std::bind(&MapAreaFilterComponent::computePublish, this, _1);
+  sub_input_ = create_subscription<PointCloud2>(
+    "input/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size), cb);
 }
 
 void MapAreaFilterComponent::computePublish(const PointCloud2ConstPtr & input)

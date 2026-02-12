@@ -80,38 +80,37 @@ public:
 
 class MapAreaFilterComponent : public rclcpp::Node
 {
-protected:
+public:
+  MapAreaFilterComponent(const rclcpp::NodeOptions & options);
+
+private:
   bool enable_object_filtering_{false};
   bool enable_pointcloud_filtering_{false};
+  double min_guaranteed_area_distance_;
+  std::string map_frame_;
+  std::string base_link_frame_;
 
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
-  autoware::universe_utils::TransformListener transform_listener_{this};
 
   rclcpp::Publisher<PredictedObjects>::SharedPtr filtered_objects_pub_;
   rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
-
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
-  rclcpp::Subscription<PredictedObjects>::SharedPtr objects_sub_;
-  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr lanelet_map_sub_;
-  rclcpp::Subscription<PointCloud2>::SharedPtr sub_input_;
 
   // tf
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
 
+  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr lanelet_map_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
+  rclcpp::Subscription<PredictedObjects>::SharedPtr objects_sub_;
+  rclcpp::Subscription<PointCloud2>::SharedPtr sub_input_;
+
   /** \brief Internal mutex. */
   std::mutex mutex_;
-
-  nav_msgs::msg::Odometry kinematic_state_;
   autoware::route_handler::RouteHandler route_handler_;
+  nav_msgs::msg::Odometry kinematic_state_;
   boost::optional<PredictedObjects::ConstSharedPtr> objects_ptr_;
   std::vector<RemovalArea> removal_areas_;
-
-  std::string map_frame_;
-  std::string base_link_frame_;
-
-  double min_guaranteed_area_distance_;
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult paramCallback(const std::vector<rclcpp::Parameter> & p);
@@ -132,9 +131,6 @@ protected:
     const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output);
 
   void computePublish(const PointCloud2ConstPtr & input);
-
-public:
-  MapAreaFilterComponent(const rclcpp::NodeOptions & options);
 };
 
 }  // namespace map_area_filter
