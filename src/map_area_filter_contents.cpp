@@ -423,10 +423,10 @@ bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objec
         }
       }
 
-      const auto obj_centeroid_xy = PointXY(pos.x, pos.y);
+      const auto obj_centroid_xy = PointXY(pos.x, pos.y);
       if (
-        boost::geometry::within(obj_centeroid_xy, removal_area.envelope_box_) &&
-        boost::geometry::within(obj_centeroid_xy, removal_area.polygon_)) {
+        boost::geometry::within(obj_centroid_xy, removal_area.envelope_box_) &&
+        boost::geometry::within(obj_centroid_xy, removal_area.polygon_)) {
         within = true;
         break;
       }
