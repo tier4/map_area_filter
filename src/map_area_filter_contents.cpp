@@ -65,17 +65,17 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     "input/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size), cb);
 
   pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
-  // set initial parameters
 
+  // set initial parameters
   map_frame_ = static_cast<std::string>(this->declare_parameter("map_frame", "map"));
   base_link_frame_ =
     static_cast<std::string>(this->declare_parameter("base_link_frame", "base_link"));
   min_guaranteed_area_distance_ =
     static_cast<double>(this->declare_parameter("min_guaranteed_area_distance", 100));
-  // 1: pointcloud_filter 2: object_filter
-  filter_type = static_cast<double>(this->declare_parameter("filter_type", 1));
-  // todo (takagi): cleanup filter_type usage (combine with do_filter_,
-  // 常にトピックの受信は行うなど)
+  enable_object_filtering_ =
+    static_cast<bool>(this->declare_parameter("enable_object_filtering", false));
+  enable_pointcloud_filtering_ =
+    static_cast<bool>(this->declare_parameter("enable_pointcloud_filtering", false));
 
   odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
     "input/odometry", rclcpp::QoS(1),
@@ -83,20 +83,16 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
   lanelet_map_sub_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
     "input/vector_map", rclcpp::QoS(10).transient_local(),
     std::bind(&MapAreaFilterComponent::lanelet_map_callback, this, _1));
-
-  if (filter_type == 2 || filter_type == 3) {
-    objects_sub_ = this->create_subscription<PredictedObjects>(
-      "input/objects", rclcpp::QoS(10),
-      std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
-    filtered_objects_pub_ =
-      this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
-  }
-  if (filter_type != 1 && filter_type != 2 && filter_type != 3) {
-    RCLCPP_ERROR_STREAM(
+  objects_sub_ = this->create_subscription<PredictedObjects>(
+    "input/objects", rclcpp::QoS(10),
+    std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
+  filtered_objects_pub_ =
+    this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
+  if (!enable_object_filtering_ && !enable_pointcloud_filtering_) {
+    RCLCPP_WARN_STREAM(
       this->get_logger(),
-      "\nfilter_type: " << filter_type
-                        << " is not invalid.\nIn order to filter pointcloud: filter_type = 1\nIn "
-                           "order to filter objects: filter_type = 2");
+      "Both object filtering and pointcloud filtering are disabled. The map_area_filter node will "
+      "not filter anything. Disabling the node is recommended.");
   }
 
   set_param_res_ = this->add_on_set_parameters_callback(
@@ -196,7 +192,11 @@ void MapAreaFilterComponent::lanelet_map_callback(
     }
   }
 
-  RCLCPP_INFO(this->get_logger(), "%lu removal areas are registered", removal_areas_.size());
+  RCLCPP_INFO(
+    this->get_logger(), "map_area_filter: %lu removal areas are registered", removal_areas_.size());
+  if (removal_areas_.empty()) {
+    RCLCPP_WARN(this->get_logger(), "map_area_filter: No removal areas are found in the map.");
+  }
 }
 
 void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstSharedPtr & msg)
@@ -205,7 +205,8 @@ void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstShare
   objects_ptr_ = msg;
 
   PredictedObjects out_objects;
-  if (!do_filter_ || removal_areas_.empty()) {
+
+  if (!enable_object_filtering_ || removal_areas_.empty()) {
     filtered_objects_pub_->publish(*objects_ptr_.get());
   } else if (filter_objects_by_area(out_objects)) {
     filtered_objects_pub_->publish(out_objects);
@@ -359,9 +360,7 @@ void MapAreaFilterComponent::filter(const PointCloud2ConstPtr & input, PointClou
 {
   std::scoped_lock lock(mutex_);
 
-  if (!do_filter_ || removal_areas_.empty()) {
-    RCLCPP_WARN_STREAM_THROTTLE(
-      this->get_logger(), *this->get_clock(), 1, "Not filtering: Check empty areas or Parameters.");
+  if (!enable_pointcloud_filtering_ || removal_areas_.empty()) {
     output = *input;
     return;
   }
@@ -402,17 +401,15 @@ rcl_interfaces::msg::SetParametersResult MapAreaFilterComponent::paramCallback(
 {
   std::scoped_lock lock(mutex_);
 
-  if (get_param(p, "do_filter", do_filter_)) {
+  if (get_param(p, "enable_object_filtering", enable_object_filtering_)) {
     RCLCPP_DEBUG(
-      this->get_logger(), "Setting new whether to apply filter: %s.",
-      do_filter_ ? "true" : "false");
+      this->get_logger(), "Setting new object filtering to: %s.",
+      enable_object_filtering_ ? "true" : "false");
   }
-  if (get_param(p, "map_frame", map_frame_)) {
-    RCLCPP_DEBUG(this->get_logger(), "Setting new map frame to: %s.", map_frame_.c_str());
-  }
-  if (get_param(p, "base_link_frame", base_link_frame_)) {
+  if (get_param(p, "enable_pointcloud_filtering", enable_pointcloud_filtering_)) {
     RCLCPP_DEBUG(
-      this->get_logger(), "Setting new base link frame to: %s.", base_link_frame_.c_str());
+      this->get_logger(), "Setting new pointcloud filtering to: %s.",
+      enable_pointcloud_filtering_ ? "true" : "false");
   }
   if (get_param(p, "min_guaranteed_area_distance", min_guaranteed_area_distance_)) {
     RCLCPP_DEBUG(

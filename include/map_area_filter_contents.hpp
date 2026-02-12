@@ -81,8 +81,8 @@ public:
 class MapAreaFilterComponent : public rclcpp::Node
 {
 protected:
-  bool do_filter_ = true;
-  int filter_type;
+  bool enable_object_filtering_{false};
+  bool enable_pointcloud_filtering_{false};
 
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
