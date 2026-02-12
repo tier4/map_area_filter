@@ -22,7 +22,6 @@ include_directories(
 
 ament_auto_add_executable(map_area_filter
   src/map_area_filter_contents.cpp
-  src/basefilter.cpp
   src/map_area_filter_exec.cpp
 )
 target_link_libraries(map_area_filter
