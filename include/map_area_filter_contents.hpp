@@ -84,6 +84,10 @@ public:
   MapAreaFilterComponent(const rclcpp::NodeOptions & options);
 
 private:
+  // tf
+  tf2_ros::Buffer tf_buffer_;
+  tf2_ros::TransformListener tf_listener_;
+
   bool enable_object_filtering_{false};
   bool enable_pointcloud_filtering_{false};
   double min_guaranteed_area_distance_;
@@ -93,17 +97,13 @@ private:
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
-  rclcpp::Publisher<PredictedObjects>::SharedPtr filtered_objects_pub_;
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
+  rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_pointcloud_;
 
-  // tf
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
-
-  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr lanelet_map_sub_;
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
-  rclcpp::Subscription<PredictedObjects>::SharedPtr objects_sub_;
-  rclcpp::Subscription<PointCloud2>::SharedPtr sub_input_;
+  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_lanelet_map_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odometry_;
+  rclcpp::Subscription<PredictedObjects>::SharedPtr sub_objects_;
+  rclcpp::Subscription<PointCloud2>::SharedPtr sub_pointcloud_;
 
   /** \brief Internal mutex. */
   std::mutex mutex_;

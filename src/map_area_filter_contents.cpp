@@ -79,24 +79,23 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
 
   const int max_queue_size = 5;
 
-  filtered_objects_pub_ =
-    this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
-  pub_output_ = this->create_publisher<PointCloud2>(
-    "output/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size));
+  pub_objects_ = this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
+  pub_pointcloud_ = this->create_publisher<PointCloud2>(
+    "output/pointcloud", rclcpp::SensorDataQoS().keep_last(max_queue_size));
 
-  lanelet_map_sub_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
+  sub_lanelet_map_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
     "input/vector_map", rclcpp::QoS(10).transient_local(),
     std::bind(&MapAreaFilterComponent::lanelet_map_callback, this, _1));
-  odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+  sub_odometry_ = this->create_subscription<nav_msgs::msg::Odometry>(
     "input/odometry", rclcpp::QoS(1),
     std::bind(&MapAreaFilterComponent::odometry_callback, this, _1));
-  objects_sub_ = this->create_subscription<PredictedObjects>(
+  sub_objects_ = this->create_subscription<PredictedObjects>(
     "input/objects", rclcpp::QoS(10),
     std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
   std::function<void(const PointCloud2ConstPtr msg)> cb =
     std::bind(&MapAreaFilterComponent::computePublish, this, _1);
-  sub_input_ = create_subscription<PointCloud2>(
-    "input/objects_cloud", rclcpp::SensorDataQoS().keep_last(max_queue_size), cb);
+  sub_pointcloud_ = create_subscription<PointCloud2>(
+    "input/pointcloud", rclcpp::SensorDataQoS().keep_last(max_queue_size), cb);
 }
 
 void MapAreaFilterComponent::computePublish(const PointCloud2ConstPtr & input)
@@ -107,7 +106,7 @@ void MapAreaFilterComponent::computePublish(const PointCloud2ConstPtr & input)
   filter(input, *output);
 
   // Publish a boost shared ptr
-  pub_output_->publish(std::move(output));
+  pub_pointcloud_->publish(std::move(output));
 }
 
 void MapAreaFilterComponent::odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & msg)
@@ -205,9 +204,9 @@ void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstShare
   PredictedObjects out_objects;
 
   if (!enable_object_filtering_ || removal_areas_.empty()) {
-    filtered_objects_pub_->publish(*objects_ptr_.get());
+    pub_objects_->publish(*objects_ptr_.get());
   } else if (filter_objects_by_area(out_objects)) {
-    filtered_objects_pub_->publish(out_objects);
+    pub_objects_->publish(out_objects);
   }
 }
 
