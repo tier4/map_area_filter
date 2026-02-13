@@ -16,6 +16,8 @@
 
 #include "map_area_filter_contents.hpp"
 
+#include <autoware_utils/system/stop_watch.hpp>
+
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/Polygon.h>
 
@@ -82,6 +84,8 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
   pub_objects_ = this->create_publisher<PredictedObjects>("output/objects", rclcpp::QoS(10));
   pub_pointcloud_ = this->create_publisher<PointCloud2>(
     "output/pointcloud", rclcpp::SensorDataQoS().keep_last(max_queue_size));
+  processing_time_publisher_ =
+    std::make_shared<autoware_utils_debug::DebugPublisher>(this, "debug");
 
   sub_lanelet_map_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
     "input/vector_map", rclcpp::QoS(10).transient_local(),
@@ -215,6 +219,8 @@ void MapAreaFilterComponent::odometry_callback(const nav_msgs::msg::Odometry::Co
 void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstSharedPtr & msg)
 {
   std::scoped_lock lock(mutex_);
+  autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch;
+  stop_watch.tic();
   objects_ptr_ = msg;
 
   PredictedObjects out_objects;
@@ -224,16 +230,22 @@ void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstShare
   } else if (filter_objects_by_area(out_objects)) {
     pub_objects_->publish(out_objects);
   }
+  processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "object_filtering/processing_time_ms", stop_watch.toc());
 }
 
 void MapAreaFilterComponent::pointcloud_callback(const PointCloud2ConstPtr & input)
 {
+  autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch;
+  stop_watch.tic();
   auto output = std::make_unique<PointCloud2>();
 
   filter(input, *output);
 
   // Publish a boost shared ptr
   pub_pointcloud_->publish(std::move(output));
+  processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "pointcloud_filtering/processing_time_ms", stop_watch.toc());
 }
 
 bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objects)

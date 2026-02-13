@@ -18,6 +18,7 @@
 
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
+#include <autoware_utils_debug/debug_publisher.hpp>
 #include <pcl/common/impl/common.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
@@ -98,6 +99,7 @@ private:
 
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_;
   rclcpp::Publisher<PointCloud2>::SharedPtr pub_pointcloud_;
+  std::shared_ptr<autoware_utils_debug::DebugPublisher> processing_time_publisher_;
 
   rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_lanelet_map_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odometry_;
