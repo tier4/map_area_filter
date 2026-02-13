@@ -250,22 +250,22 @@ void MapAreaFilterComponent::lanelet_map_callback(
       const std::string key = attribute.first;
       const std::string value = attribute.second.value();
 
-      if (key == "max_removal_height") {
+      if (key == "remove_below_height") {
         try {
-          removal_area.max_removal_height_ = std::stod(value);
+          removal_area.remove_below_height_ = std::stod(value);
         } catch (const std::exception & e) {
           RCLCPP_WARN(
             this->get_logger(),
-            "Invalid value type against the key max_removal_height for polygon %ld: %s",
+            "Invalid value type against the key remove_below_height for polygon %ld: %s",
             polygon_layer_elemet.id(), e.what());
         }
-      } else if (key == "min_removal_height") {
+      } else if (key == "remove_above_height") {
         try {
-          removal_area.min_removal_height_ = std::stod(value);
+          removal_area.remove_above_height_ = std::stod(value);
         } catch (const std::exception & e) {
           RCLCPP_WARN(
             this->get_logger(),
-            "Invalid value type against the key min_removal_height for polygon %ld: %s",
+            "Invalid value type against the key remove_above_height for polygon %ld: %s",
             polygon_layer_elemet.id(), e.what());
         }
       } else if (key != "type" && key != "subtype") {
@@ -346,13 +346,13 @@ void MapAreaFilterComponent::filter_points_by_area(
   for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
     const auto & point = input->points[point_i];
     for (const auto & removal_area : active_removal_areas) {
-      const auto & th_min = removal_area.min_removal_height_;
-      const auto & th_max = removal_area.max_removal_height_;
+      const auto & remove_above = removal_area.remove_above_height_;
+      const auto & remove_bellow = removal_area.remove_below_height_;
       const double point_height = point.z - removal_area.centroid_height_;
-      if (th_min.has_value() || th_max.has_value()) {
-        const bool hit_min = th_min.has_value() && (point_height > th_min.value());
-        const bool hit_max = th_max.has_value() && (point_height < th_max.value());
-        if (!hit_min && !hit_max) {
+      if (remove_above.has_value() || remove_bellow.has_value()) {
+        const bool hit_above = remove_above.has_value() && (point_height > remove_above.value());
+        const bool hit_bellow = remove_bellow.has_value() && (point_height < remove_bellow.value());
+        if (!hit_above && !hit_bellow) {
           continue;
         }
       }
@@ -409,16 +409,16 @@ bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objec
       }
 
       const auto & pos = object.kinematics.initial_pose_with_covariance.pose.position;
-      const auto & th_min = removal_area.min_removal_height_;
-      const auto & th_max = removal_area.max_removal_height_;
+      const auto & remove_above = removal_area.remove_above_height_;
+      const auto & remove_bellow = removal_area.remove_below_height_;
       const double lower_height =
         pos.z - object.shape.dimensions.z * 0.5 - removal_area.centroid_height_;
       const double upper_height =
         pos.z + object.shape.dimensions.z * 0.5 - removal_area.centroid_height_;
-      if (th_min.has_value() || th_max.has_value()) {
-        const bool hit_min = th_min.has_value() && (lower_height > th_min.value());
-        const bool hit_max = th_max.has_value() && (upper_height < th_max.value());
-        if (!hit_min && !hit_max) {
+      if (remove_above.has_value() || remove_bellow.has_value()) {
+        const bool hit_above = remove_above.has_value() && (lower_height > remove_above.value());
+        const bool hit_bellow = remove_bellow.has_value() && (upper_height < remove_bellow.value());
+        if (!hit_above && !hit_bellow) {
           continue;
         }
       }

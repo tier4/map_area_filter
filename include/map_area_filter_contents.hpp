@@ -73,8 +73,8 @@ public:
   lanelet::BasicPolygon2d polygon_;
   Box2D envelope_box_;
   double centroid_height_;
-  std::optional<double> min_removal_height_{std::nullopt};
-  std::optional<double> max_removal_height_{std::nullopt};
+  std::optional<double> remove_above_height_{std::nullopt};
+  std::optional<double> remove_below_height_{std::nullopt};
 
   bool is_in_distance(const geometry_msgs::msg::Point pos, const double distance) const;
 };
