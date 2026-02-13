@@ -62,7 +62,7 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
   enable_pointcloud_filtering_ =
     static_cast<bool>(this->declare_parameter("enable_pointcloud_filtering", false));
   min_guaranteed_area_distance_ =
-    static_cast<double>(this->declare_parameter("min_guaranteed_area_distance", 100));
+    static_cast<double>(this->declare_parameter("min_guaranteed_area_distance", 100.0));
   map_frame_ = static_cast<std::string>(this->declare_parameter("map_frame", "map"));
   base_link_frame_ =
     static_cast<std::string>(this->declare_parameter("base_link_frame", "base_link"));

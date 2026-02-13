@@ -5,6 +5,7 @@
   <arg name="input/pointcloud" default="/perception/obstacle_segmentation/obstacle_pointcloud"/>
   <arg name="output/objects" default="/perception/object_recognition/map_filtered_objects"/>
   <arg name="output/pointcloud" default="/perception/obstacle_segmentation/map_filtered_pointcloud"/>
+  <arg name="map_area_filter_param_path" default="$(find-pkg-share map_area_filter)/config/map_area_filter.param.yaml"/>
 
   <!-- Node -->
   <node pkg="map_area_filter" exec="map_area_filter" name="map_area_objects_filter" output="screen">
@@ -14,5 +15,6 @@
     <remap from="input/pointcloud" to="$(var input/pointcloud)"/>
     <remap from="output/objects" to="$(var output/objects)"/>
     <remap from="output/pointcloud" to="$(var output/pointcloud)"/>
+    <param from="$(var map_area_filter_param_path)"/>
   </node>
 </launch>
