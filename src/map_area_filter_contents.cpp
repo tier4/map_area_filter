@@ -120,15 +120,14 @@ void MapAreaFilterComponent::lanelet_map_callback(
 {
   std::scoped_lock lock(mutex_);
 
-  route_handler_.setMap(*msg);
-  const auto lanelet_map_ptr = route_handler_.getLaneletMapPtr();
-
-  removal_areas_.clear();
-
+  autoware::route_handler::RouteHandler route_handler;
+  route_handler.setMap(*msg);
+  const auto lanelet_map_ptr = route_handler.getLaneletMapPtr();
   if (!lanelet_map_ptr) {
     return;
   }
 
+  removal_areas_.clear();
   for (const auto & polygon_layer_elemet : lanelet_map_ptr->polygonLayer) {
     std::string type_val = polygon_layer_elemet.attributeOr(lanelet::AttributeName::Type, "");
 

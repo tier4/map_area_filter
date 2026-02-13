@@ -45,7 +45,6 @@ typedef boost::geometry::model::d2::point_xy<float> PointXY;
 typedef boost::geometry::model::polygon<PointXY> Polygon2D;
 typedef boost::geometry::model::box<PointXY> Box2D;
 
-
 using autoware_perception_msgs::msg::PredictedObjects;
 using PointCloud2 = sensor_msgs::msg::PointCloud2;
 using PointCloud2ConstPtr = sensor_msgs::msg::PointCloud2::ConstSharedPtr;
@@ -107,10 +106,9 @@ private:
 
   /** \brief Internal mutex. */
   std::mutex mutex_;
-  autoware::route_handler::RouteHandler route_handler_;
+  std::vector<RemovalArea> removal_areas_;
   nav_msgs::msg::Odometry kinematic_state_;
   boost::optional<PredictedObjects::ConstSharedPtr> objects_ptr_;
-  std::vector<RemovalArea> removal_areas_;
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult paramCallback(const std::vector<rclcpp::Parameter> & p);
