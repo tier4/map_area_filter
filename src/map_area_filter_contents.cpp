@@ -259,12 +259,12 @@ void MapAreaFilterComponent::filter_points_by_area(
     const auto & point = input->points[point_i];
     for (const auto & removal_area : active_removal_areas) {
       const auto & remove_above = removal_area.remove_above_height_;
-      const auto & remove_bellow = removal_area.remove_below_height_;
+      const auto & remove_below = removal_area.remove_below_height_;
       const double point_height = point.z - removal_area.centroid_height_;
-      if (remove_above.has_value() || remove_bellow.has_value()) {
+      if (remove_above.has_value() || remove_below.has_value()) {
         const bool hit_above = remove_above.has_value() && (point_height > remove_above.value());
-        const bool hit_bellow = remove_bellow.has_value() && (point_height < remove_bellow.value());
-        if (!hit_above && !hit_bellow) {
+        const bool hit_below = remove_below.has_value() && (point_height < remove_below.value());
+        if (!hit_above && !hit_below) {
           continue;
         }
       }
@@ -322,15 +322,15 @@ bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objec
 
       const auto & pos = object.kinematics.initial_pose_with_covariance.pose.position;
       const auto & remove_above = removal_area.remove_above_height_;
-      const auto & remove_bellow = removal_area.remove_below_height_;
+      const auto & remove_below = removal_area.remove_below_height_;
       const double lower_height =
         pos.z - object.shape.dimensions.z * 0.5 - removal_area.centroid_height_;
       const double upper_height =
         pos.z + object.shape.dimensions.z * 0.5 - removal_area.centroid_height_;
-      if (remove_above.has_value() || remove_bellow.has_value()) {
+      if (remove_above.has_value() || remove_below.has_value()) {
         const bool hit_above = remove_above.has_value() && (lower_height > remove_above.value());
-        const bool hit_bellow = remove_bellow.has_value() && (upper_height < remove_bellow.value());
-        if (!hit_above && !hit_bellow) {
+        const bool hit_below = remove_below.has_value() && (upper_height < remove_below.value());
+        if (!hit_above && !hit_below) {
           continue;
         }
       }
