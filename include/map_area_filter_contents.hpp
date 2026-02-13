@@ -112,23 +112,19 @@ private:
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult paramCallback(const std::vector<rclcpp::Parameter> & p);
-
-  void filter(const PointCloud2ConstPtr & input, PointCloud2 & output);
-
-  void filter_points_by_area(
-    const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
-  bool filter_objects_by_area(PredictedObjects & out_objects);
-
-  void timer_callback();
-  void odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & odom_msg);
   void lanelet_map_callback(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr & msg);
+  void odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & odom_msg);
   void objects_callback(const PredictedObjects::ConstSharedPtr & cloud_msg);
+  void pointcloud_callback(const PointCloud2ConstPtr & input);
+
+  bool filter_objects_by_area(PredictedObjects & out_objects);
 
   static bool transform_pointcloud(
     const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
     const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output);
-
-  void computePublish(const PointCloud2ConstPtr & input);
+  void filter(const PointCloud2ConstPtr & input, PointCloud2 & output);
+  void filter_points_by_area(
+    const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
 };
 
 }  // namespace map_area_filter

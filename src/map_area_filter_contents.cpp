@@ -93,26 +93,37 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     "input/objects", rclcpp::QoS(10),
     std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
   std::function<void(const PointCloud2ConstPtr msg)> cb =
-    std::bind(&MapAreaFilterComponent::computePublish, this, _1);
+    std::bind(&MapAreaFilterComponent::pointcloud_callback, this, _1);
   sub_pointcloud_ = create_subscription<PointCloud2>(
     "input/pointcloud", rclcpp::SensorDataQoS().keep_last(max_queue_size), cb);
 }
 
-void MapAreaFilterComponent::computePublish(const PointCloud2ConstPtr & input)
-{
-  auto output = std::make_unique<PointCloud2>();
-
-  // Call the virtual method in the child
-  filter(input, *output);
-
-  // Publish a boost shared ptr
-  pub_pointcloud_->publish(std::move(output));
-}
-
-void MapAreaFilterComponent::odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & msg)
+rcl_interfaces::msg::SetParametersResult MapAreaFilterComponent::paramCallback(
+  const std::vector<rclcpp::Parameter> & p)
 {
   std::scoped_lock lock(mutex_);
-  kinematic_state_ = *msg;
+
+  if (get_param(p, "enable_object_filtering", enable_object_filtering_)) {
+    RCLCPP_DEBUG(
+      this->get_logger(), "Setting new object filtering to: %s.",
+      enable_object_filtering_ ? "true" : "false");
+  }
+  if (get_param(p, "enable_pointcloud_filtering", enable_pointcloud_filtering_)) {
+    RCLCPP_DEBUG(
+      this->get_logger(), "Setting new pointcloud filtering to: %s.",
+      enable_pointcloud_filtering_ ? "true" : "false");
+  }
+  if (get_param(p, "min_guaranteed_area_distance", min_guaranteed_area_distance_)) {
+    RCLCPP_DEBUG(
+      this->get_logger(), "Setting new area check distance to: %.2lf.",
+      min_guaranteed_area_distance_);
+  }
+
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  result.reason = "success";
+
+  return result;
 }
 
 void MapAreaFilterComponent::lanelet_map_callback(
@@ -195,6 +206,12 @@ void MapAreaFilterComponent::lanelet_map_callback(
   }
 }
 
+void MapAreaFilterComponent::odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & msg)
+{
+  std::scoped_lock lock(mutex_);
+  kinematic_state_ = *msg;
+}
+
 void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstSharedPtr & msg)
 {
   std::scoped_lock lock(mutex_);
@@ -209,83 +226,14 @@ void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstShare
   }
 }
 
-bool MapAreaFilterComponent::transform_pointcloud(  // output flame
-  const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
-  const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output)
+void MapAreaFilterComponent::pointcloud_callback(const PointCloud2ConstPtr & input)
 {
-  try {
-    geometry_msgs::msg::TransformStamped tf_stamped;
-    tf_stamped = tf2.lookupTransform(
-      target_frame, input.header.frame_id, input.header.stamp, rclcpp::Duration::from_seconds(0.5));
+  auto output = std::make_unique<PointCloud2>();
 
-    Eigen::Matrix4f tf_matrix = tf2::transformToEigen(tf_stamped.transform).matrix().cast<float>();
-    pcl_ros::transformPointCloud(tf_matrix, input, output);
-    output.header.stamp = input.header.stamp;
-    output.header.frame_id = target_frame;
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN_STREAM(rclcpp::get_logger("map_area_filter"), ex.what());
-    return false;
-  }
-  return true;
-}
+  filter(input, *output);
 
-void MapAreaFilterComponent::filter_points_by_area(
-  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output)
-{
-  // (v^2) / (2*a) + min_distance
-  constexpr double a = 1.0;  // m/s^2
-  const double attention_length =
-    std::pow(kinematic_state_.twist.twist.linear.x, 2) / (2.0 * a) + min_guaranteed_area_distance_;
-
-  const auto point_size = input->points.size();  // subscribeされた点群のtopic
-  std::vector<bool> within(point_size, false);
-
-  std::vector<RemovalArea> active_removal_areas;
-  for (const auto & removal_area : removal_areas_) {
-    if (!removal_area.is_in_distance(kinematic_state_.pose.pose.position, attention_length)) {
-      continue;
-    }
-
-    if (
-      removal_area.target_labels_.count("pointcloud") == 0 &&
-      removal_area.target_labels_.count("all") == 0) {
-      continue;
-    }
-    active_removal_areas.push_back(removal_area);
-  }
-
-#pragma omp parallel for num_threads(1)
-  for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
-    const auto & point = input->points[point_i];
-    for (const auto & removal_area : active_removal_areas) {
-      const auto & remove_above = removal_area.remove_above_height_;
-      const auto & remove_below = removal_area.remove_below_height_;
-      const double point_height = point.z - removal_area.centroid_height_;
-      if (remove_above.has_value() || remove_below.has_value()) {
-        const bool hit_above = remove_above.has_value() && (point_height > remove_above.value());
-        const bool hit_below = remove_below.has_value() && (point_height < remove_below.value());
-        if (!hit_above && !hit_below) {
-          continue;
-        }
-      }
-
-      const auto point_xy = PointXY(point.x, point.y);
-      if (
-        boost::geometry::within(point_xy, removal_area.envelope_box_) &&
-        boost::geometry::within(point_xy, removal_area.polygon_)) {
-        within[point_i] = true;
-        break;
-      }
-    }
-  }
-
-  for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
-    if (!within[point_i]) {
-      const auto point = input->points[point_i];
-      output->points.emplace_back(pcl::PointXYZ(point.x, point.y, point.z));
-      // todo (takagi): restrict copy
-    }
-  }
+  // Publish a boost shared ptr
+  pub_pointcloud_->publish(std::move(output));
 }
 
 bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objects)
@@ -352,6 +300,26 @@ bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objec
   return true;
 }
 
+bool MapAreaFilterComponent::transform_pointcloud(  // output flame
+  const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
+  const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output)
+{
+  try {
+    geometry_msgs::msg::TransformStamped tf_stamped;
+    tf_stamped = tf2.lookupTransform(
+      target_frame, input.header.frame_id, input.header.stamp, rclcpp::Duration::from_seconds(0.5));
+
+    Eigen::Matrix4f tf_matrix = tf2::transformToEigen(tf_stamped.transform).matrix().cast<float>();
+    pcl_ros::transformPointCloud(tf_matrix, input, output);
+    output.header.stamp = input.header.stamp;
+    output.header.frame_id = target_frame;
+  } catch (tf2::TransformException & ex) {
+    RCLCPP_WARN_STREAM(rclcpp::get_logger("map_area_filter"), ex.what());
+    return false;
+  }
+  return true;
+}
+
 void MapAreaFilterComponent::filter(const PointCloud2ConstPtr & input, PointCloud2 & output)
 {
   std::scoped_lock lock(mutex_);
@@ -392,32 +360,64 @@ void MapAreaFilterComponent::filter(const PointCloud2ConstPtr & input, PointClou
   output.header = input->header;
 }
 
-rcl_interfaces::msg::SetParametersResult MapAreaFilterComponent::paramCallback(
-  const std::vector<rclcpp::Parameter> & p)
+void MapAreaFilterComponent::filter_points_by_area(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output)
 {
-  std::scoped_lock lock(mutex_);
+  // (v^2) / (2*a) + min_distance
+  constexpr double a = 1.0;  // m/s^2
+  const double attention_length =
+    std::pow(kinematic_state_.twist.twist.linear.x, 2) / (2.0 * a) + min_guaranteed_area_distance_;
 
-  if (get_param(p, "enable_object_filtering", enable_object_filtering_)) {
-    RCLCPP_DEBUG(
-      this->get_logger(), "Setting new object filtering to: %s.",
-      enable_object_filtering_ ? "true" : "false");
-  }
-  if (get_param(p, "enable_pointcloud_filtering", enable_pointcloud_filtering_)) {
-    RCLCPP_DEBUG(
-      this->get_logger(), "Setting new pointcloud filtering to: %s.",
-      enable_pointcloud_filtering_ ? "true" : "false");
-  }
-  if (get_param(p, "min_guaranteed_area_distance", min_guaranteed_area_distance_)) {
-    RCLCPP_DEBUG(
-      this->get_logger(), "Setting new area check distance to: %.2lf.",
-      min_guaranteed_area_distance_);
+  const auto point_size = input->points.size();  // subscribeされた点群のtopic
+  std::vector<bool> within(point_size, false);
+
+  std::vector<RemovalArea> active_removal_areas;
+  for (const auto & removal_area : removal_areas_) {
+    if (!removal_area.is_in_distance(kinematic_state_.pose.pose.position, attention_length)) {
+      continue;
+    }
+
+    if (
+      removal_area.target_labels_.count("pointcloud") == 0 &&
+      removal_area.target_labels_.count("all") == 0) {
+      continue;
+    }
+    active_removal_areas.push_back(removal_area);
   }
 
-  rcl_interfaces::msg::SetParametersResult result;
-  result.successful = true;
-  result.reason = "success";
+#pragma omp parallel for num_threads(1)
+  for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
+    const auto & point = input->points[point_i];
+    for (const auto & removal_area : active_removal_areas) {
+      const auto & remove_above = removal_area.remove_above_height_;
+      const auto & remove_below = removal_area.remove_below_height_;
+      const double point_height = point.z - removal_area.centroid_height_;
+      if (remove_above.has_value() || remove_below.has_value()) {
+        const bool hit_above = remove_above.has_value() && (point_height > remove_above.value());
+        const bool hit_below = remove_below.has_value() && (point_height < remove_below.value());
+        if (!hit_above && !hit_below) {
+          continue;
+        }
+      }
 
-  return result;
+      const auto point_xy = PointXY(point.x, point.y);
+      if (
+        boost::geometry::within(point_xy, removal_area.envelope_box_) &&
+        boost::geometry::within(point_xy, removal_area.polygon_)) {
+        within[point_i] = true;
+        break;
+      }
+    }
+  }
+
+  output->points.reserve(point_size);
+  for (std::size_t point_i = 0; point_i < point_size; ++point_i) {
+    if (!within[point_i]) {
+      const auto & point = input->points[point_i];
+      output->points.emplace_back(pcl::PointXYZ(point.x, point.y, point.z));
+      // todo (takagi): restrict copy
+    }
+  }
 }
 
 }  // namespace map_area_filter
