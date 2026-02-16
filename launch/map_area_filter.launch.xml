@@ -8,7 +8,7 @@
   <arg name="map_area_filter_param_path" default="$(find-pkg-share map_area_filter)/config/map_area_filter.param.yaml"/>
 
   <!-- Node -->
-  <node pkg="map_area_filter" exec="map_area_filter" name="map_area_objects_filter" output="screen">
+  <node pkg="map_area_filter" exec="map_area_filter_node" name="map_area_filter" output="screen">
     <remap from="input/vector_map" to="$(var input_vector_map)"/>
     <remap from="input/odometry" to="$(var input_odometry)"/>
     <remap from="input/objects" to="$(var input_objects)"/>
