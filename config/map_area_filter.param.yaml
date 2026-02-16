@@ -1,6 +1,5 @@
 /**:
   ros__parameters:
-    hoge: 0.0
     enable_object_filtering: true
     enable_pointcloud_filtering: true
     min_guaranteed_area_distance: 100.0  # [m] Minimum distance from the ego vehicle to guarantee area filtering
