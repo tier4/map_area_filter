@@ -1,4 +1,7 @@
 # obstacle_removal_area_filter
+This repository (https://github.com/tier4/map_area_filter) will be deprecated.
+The map_area_filter package has been renamed to obstacle_removal_area_filter and migrated to the following location:
+https://github.com/tier4/l4_toolkit/tree/main/obstacle_removal_area_filter
 
 ## Overview
 The `obstacle_removal_area_filter` is a feature that removes input data—specifically "Objects" or "PointClouds"—that are located within specified areas and outputs the remaining data.

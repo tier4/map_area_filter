@@ -1,4 +1,9 @@
 # obstacle_removal_area_filter
+【移行のお知らせ】
+本リポジトリはアーカイブされる予定です。
+本パッケージは obstacle_removal_area_filter にリネームされ、現在は以下のリポジトリで管理されています。
+
+移行先: https://github.com/tier4/l4_toolkit/tree/main/obstacle_removal_area_filter
 
 ## 概要
 `obstacle_removal_area_filter` は、入力された「物体（Objects）」や「点群（PointCloud）」に対し、指定された領域内にあるデータを除去して出力する機能です。
