@@ -18,6 +18,7 @@
 
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
+#include <autoware_utils_debug/debug_publisher.hpp>
 #include <pcl/common/impl/common.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
@@ -26,7 +27,6 @@
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <boost/assign/std/vector.hpp>
 #include <boost/geometry.hpp>
@@ -45,7 +45,6 @@ namespace map_area_filter
 typedef boost::geometry::model::d2::point_xy<float> PointXY;
 typedef boost::geometry::model::polygon<PointXY> Polygon2D;
 typedef boost::geometry::model::box<PointXY> Box2D;
-
 
 using autoware_perception_msgs::msg::PredictedObjects;
 using PointCloud2 = sensor_msgs::msg::PointCloud2;
@@ -81,69 +80,53 @@ public:
 
 class MapAreaFilterComponent : public rclcpp::Node
 {
-protected:
-  bool do_filter_ = true;
-  int filter_type;
+public:
+  MapAreaFilterComponent(const rclcpp::NodeOptions & options);
 
-  /** \brief Parameter service callback result : needed to be hold */
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
-  autoware::universe_utils::TransformListener transform_listener_{this};
-
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr area_markers_pub_;
-  rclcpp::Publisher<PredictedObjects>::SharedPtr filtered_objects_pub_;
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
-
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
-  rclcpp::Subscription<PredictedObjects>::SharedPtr objects_sub_;
-  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr lanelet_map_sub_;
-  rclcpp::Subscription<PointCloud2>::SharedPtr sub_input_;
-
+private:
   // tf
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
 
-  /** \brief Internal mutex. */
-  std::mutex mutex_;
-
-  nav_msgs::msg::Odometry kinematic_state_;
-  autoware::route_handler::RouteHandler route_handler_;
-  boost::optional<PredictedObjects::ConstSharedPtr> objects_ptr_;
-  std::vector<RemovalArea> removal_areas_;
-
-  rclcpp::TimerBase::SharedPtr timer_;
-  visualization_msgs::msg::MarkerArray area_markers_msg_;
-
+  bool enable_object_filtering_{false};
+  bool enable_pointcloud_filtering_{false};
+  double min_guaranteed_area_distance_;
   std::string map_frame_;
   std::string base_link_frame_;
 
-  double min_guaranteed_area_distance_;
-  double marker_font_scale_;
+  /** \brief Parameter service callback result : needed to be hold */
+  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+
+  rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_pointcloud_;
+  std::shared_ptr<autoware_utils_debug::DebugPublisher> processing_time_publisher_;
+
+  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_lanelet_map_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odometry_;
+  rclcpp::Subscription<PredictedObjects>::SharedPtr sub_objects_;
+  rclcpp::Subscription<PointCloud2>::SharedPtr sub_pointcloud_;
+
+  /** \brief Internal mutex. */
+  std::mutex mutex_;
+  std::vector<RemovalArea> removal_areas_;
+  nav_msgs::msg::Odometry kinematic_state_;
+  boost::optional<PredictedObjects::ConstSharedPtr> objects_ptr_;
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult paramCallback(const std::vector<rclcpp::Parameter> & p);
-
-  void filter(const PointCloud2ConstPtr & input, PointCloud2 & output);
-
-  void filter_points_by_area(
-    const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
-  bool filter_objects_by_area(PredictedObjects & out_objects);
-
-  void timer_callback();
-  void odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & odom_msg);
   void lanelet_map_callback(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr & msg);
+  void odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & odom_msg);
   void objects_callback(const PredictedObjects::ConstSharedPtr & cloud_msg);
+  void pointcloud_callback(const PointCloud2ConstPtr & input);
 
-  void color_func(double dis, std_msgs::msg::ColorRGBA & color);
-  void create_area_marker_msg();
+  bool filter_objects_by_area(PredictedObjects & out_objects);
 
   static bool transform_pointcloud(
     const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
     const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output);
-
-  void computePublish(const PointCloud2ConstPtr & input);
-
-public:
-  MapAreaFilterComponent(const rclcpp::NodeOptions & options);
+  void filter(const PointCloud2ConstPtr & input, PointCloud2 & output);
+  void filter_points_by_area(
+    const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
 };
 
 }  // namespace map_area_filter
