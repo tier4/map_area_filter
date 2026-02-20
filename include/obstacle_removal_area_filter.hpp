@@ -40,7 +40,7 @@
 
 #include <random>
 
-namespace map_area_filter
+namespace obstacle_removal_area_filter
 {
 typedef boost::geometry::model::d2::point_xy<float> PointXY;
 typedef boost::geometry::model::polygon<PointXY> Polygon2D;
@@ -78,10 +78,10 @@ public:
   bool is_in_distance(const geometry_msgs::msg::Point pos, const double distance) const;
 };
 
-class MapAreaFilterComponent : public rclcpp::Node
+class ObstacleRemovalAreaFilterNode : public rclcpp::Node
 {
 public:
-  MapAreaFilterComponent(const rclcpp::NodeOptions & options);
+  ObstacleRemovalAreaFilterNode(const rclcpp::NodeOptions & options);
 
 private:
   // tf
@@ -129,4 +129,4 @@ private:
     const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
 };
 
-}  // namespace map_area_filter
+}  // namespace obstacle_removal_area_filter

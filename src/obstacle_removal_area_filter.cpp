@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "map_area_filter_contents.hpp"
+#include "obstacle_removal_area_filter.hpp"
 
 #include <autoware_utils/system/stop_watch.hpp>
 
@@ -35,7 +35,7 @@ const std::unordered_map<uint8_t, std::string> object_classification_map_ = {
   {ObjectClassification::BICYCLE, "bicycle"}};
 }  // namespace
 
-namespace map_area_filter
+namespace obstacle_removal_area_filter
 {
 bool RemovalArea::is_in_distance(const geometry_msgs::msg::Point pos, const double distance) const
 {
@@ -50,8 +50,8 @@ bool RemovalArea::is_in_distance(const geometry_msgs::msg::Point pos, const doub
 };
 
 // constructor
-MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & options)
-: Node("MapAreaFilter", options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
+ObstacleRemovalAreaFilterNode::ObstacleRemovalAreaFilterNode(const rclcpp::NodeOptions & options)
+: Node("ObstacleRemovalAreaFilter", options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
 {
   using std::placeholders::_1;
   using namespace std::chrono_literals;
@@ -70,12 +70,12 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
     static_cast<std::string>(this->declare_parameter("base_link_frame", "base_link"));
 
   set_param_res_ = this->add_on_set_parameters_callback(
-    std::bind(&MapAreaFilterComponent::paramCallback, this, _1));
+    std::bind(&ObstacleRemovalAreaFilterNode::paramCallback, this, _1));
 
   if (!enable_object_filtering_ && !enable_pointcloud_filtering_) {
     RCLCPP_WARN_STREAM(
       this->get_logger(),
-      "Both object filtering and pointcloud filtering are disabled. The map_area_filter node will "
+      "Both object filtering and pointcloud filtering are disabled. The obstacle_removal_area_filter node will "
       "not filter anything. Disabling the node is recommended.");
   }
 
@@ -89,20 +89,20 @@ MapAreaFilterComponent::MapAreaFilterComponent(const rclcpp::NodeOptions & optio
 
   sub_lanelet_map_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
     "input/vector_map", rclcpp::QoS(10).transient_local(),
-    std::bind(&MapAreaFilterComponent::lanelet_map_callback, this, _1));
+    std::bind(&ObstacleRemovalAreaFilterNode::lanelet_map_callback, this, _1));
   sub_odometry_ = this->create_subscription<nav_msgs::msg::Odometry>(
     "input/odometry", rclcpp::QoS(1),
-    std::bind(&MapAreaFilterComponent::odometry_callback, this, _1));
+    std::bind(&ObstacleRemovalAreaFilterNode::odometry_callback, this, _1));
   sub_objects_ = this->create_subscription<PredictedObjects>(
     "input/objects", rclcpp::QoS(10),
-    std::bind(&MapAreaFilterComponent::objects_callback, this, _1));
+    std::bind(&ObstacleRemovalAreaFilterNode::objects_callback, this, _1));
   std::function<void(const PointCloud2ConstPtr msg)> cb =
-    std::bind(&MapAreaFilterComponent::pointcloud_callback, this, _1);
+    std::bind(&ObstacleRemovalAreaFilterNode::pointcloud_callback, this, _1);
   sub_pointcloud_ = create_subscription<PointCloud2>(
     "input/pointcloud", rclcpp::SensorDataQoS().keep_last(max_queue_size), cb);
 }
 
-rcl_interfaces::msg::SetParametersResult MapAreaFilterComponent::paramCallback(
+rcl_interfaces::msg::SetParametersResult ObstacleRemovalAreaFilterNode::paramCallback(
   const std::vector<rclcpp::Parameter> & p)
 {
   std::scoped_lock lock(mutex_);
@@ -130,7 +130,7 @@ rcl_interfaces::msg::SetParametersResult MapAreaFilterComponent::paramCallback(
   return result;
 }
 
-void MapAreaFilterComponent::lanelet_map_callback(
+void ObstacleRemovalAreaFilterNode::lanelet_map_callback(
   const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr & msg)
 {
   std::scoped_lock lock(mutex_);
@@ -146,13 +146,13 @@ void MapAreaFilterComponent::lanelet_map_callback(
   for (const auto & polygon_layer_elemet : lanelet_map_ptr->polygonLayer) {
     std::string type_val = polygon_layer_elemet.attributeOr(lanelet::AttributeName::Type, "");
 
-    if (type_val != "map_area_filter") {
+    if (type_val != "obstacle_removal_area") {
       continue;
     }
     if (polygon_layer_elemet.empty()) {
       RCLCPP_WARN(
         this->get_logger(),
-        "Found map_area_filter polygon id: %ld but it has no vertices, skipping.",
+        "Found obstacle_removal_area_filter polygon id: %ld but it has no vertices, skipping.",
         polygon_layer_elemet.id());
       continue;
     }
@@ -204,19 +204,19 @@ void MapAreaFilterComponent::lanelet_map_callback(
   }
 
   RCLCPP_INFO(
-    this->get_logger(), "map_area_filter: %lu removal areas are registered", removal_areas_.size());
+    this->get_logger(), "obstacle_removal_area_filter: %lu removal areas are registered", removal_areas_.size());
   if (removal_areas_.empty()) {
-    RCLCPP_WARN(this->get_logger(), "map_area_filter: No removal areas are found in the map.");
+    RCLCPP_WARN(this->get_logger(), "obstacle_removal_area_filter: No removal areas are found in the map.");
   }
 }
 
-void MapAreaFilterComponent::odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & msg)
+void ObstacleRemovalAreaFilterNode::odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr & msg)
 {
   std::scoped_lock lock(mutex_);
   kinematic_state_ = *msg;
 }
 
-void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstSharedPtr & msg)
+void ObstacleRemovalAreaFilterNode::objects_callback(const PredictedObjects::ConstSharedPtr & msg)
 {
   std::scoped_lock lock(mutex_);
   autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch;
@@ -234,7 +234,7 @@ void MapAreaFilterComponent::objects_callback(const PredictedObjects::ConstShare
     "object_filtering/processing_time_ms", stop_watch.toc());
 }
 
-void MapAreaFilterComponent::pointcloud_callback(const PointCloud2ConstPtr & input)
+void ObstacleRemovalAreaFilterNode::pointcloud_callback(const PointCloud2ConstPtr & input)
 {
   autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch;
   stop_watch.tic();
@@ -248,7 +248,7 @@ void MapAreaFilterComponent::pointcloud_callback(const PointCloud2ConstPtr & inp
     "pointcloud_filtering/processing_time_ms", stop_watch.toc());
 }
 
-bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objects)
+bool ObstacleRemovalAreaFilterNode::filter_objects_by_area(PredictedObjects & out_objects)
 {
   if (!objects_ptr_.has_value() || objects_ptr_.get() == nullptr) {
     return false;
@@ -312,7 +312,7 @@ bool MapAreaFilterComponent::filter_objects_by_area(PredictedObjects & out_objec
   return true;
 }
 
-bool MapAreaFilterComponent::transform_pointcloud(  // output flame
+bool ObstacleRemovalAreaFilterNode::transform_pointcloud(  // output flame
   const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
   const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output)
 {
@@ -326,13 +326,13 @@ bool MapAreaFilterComponent::transform_pointcloud(  // output flame
     output.header.stamp = input.header.stamp;
     output.header.frame_id = target_frame;
   } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN_STREAM(rclcpp::get_logger("map_area_filter"), ex.what());
+    RCLCPP_WARN_STREAM(rclcpp::get_logger("obstacle_removal_area_filter"), ex.what());
     return false;
   }
   return true;
 }
 
-void MapAreaFilterComponent::filter(const PointCloud2ConstPtr & input, PointCloud2 & output)
+void ObstacleRemovalAreaFilterNode::filter(const PointCloud2ConstPtr & input, PointCloud2 & output)
 {
   std::scoped_lock lock(mutex_);
 
@@ -372,7 +372,7 @@ void MapAreaFilterComponent::filter(const PointCloud2ConstPtr & input, PointClou
   output.header = input->header;
 }
 
-void MapAreaFilterComponent::filter_points_by_area(
+void ObstacleRemovalAreaFilterNode::filter_points_by_area(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input, pcl::PointCloud<pcl::PointXYZ>::Ptr output)
 {
   // (v^2) / (2*a) + min_distance
@@ -432,7 +432,7 @@ void MapAreaFilterComponent::filter_points_by_area(
   }
 }
 
-}  // namespace map_area_filter
+}  // namespace obstacle_removal_area_filter
 
 #include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(map_area_filter::MapAreaFilterComponent);
+RCLCPP_COMPONENTS_REGISTER_NODE(obstacle_removal_area_filter::ObstacleRemovalAreaFilterNode);
