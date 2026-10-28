@@ -350,6 +350,12 @@ bool MapAreaFilterComponent::filter_objects_by_area(DetectedObjects & out_object
     "map",                                          // src
     in_objects.header.frame_id,                     // target
     in_objects.header.stamp, rclcpp::Duration::from_seconds(0.1));
+  if (!map2baselink) {
+    // TF is not available (e.g. at startup): do not filter, pass the objects through.
+    // Dropping them would hide obstacles; using the null transform crashed the node.
+    out_objects = in_objects;
+    return true;
+  }
   for (const auto & object : in_objects.objects) {//各オブジェクトに対して
     const auto ego_pose = map2baselink->transform.translation;
     const auto ego2ob = object.kinematics.pose_with_covariance.pose.position;
